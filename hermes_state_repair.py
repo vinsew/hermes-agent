@@ -753,7 +753,34 @@ def state_db_has_structural_damage(db_path: Path) -> bool:
         itertools.chain.from_iterable(line.splitlines() for line in lines), master_rows)
 
 
-def _db_opens_cleanly(db_path: Path) -> Optional[str]:
+_STATE_DB_FULL_INTEGRITY_CHECK_MAX_BYTES = 1024 * 1024 * 1024
+
+
+def _db_full_integrity_check_skip_reason(
+    db_path: Path,
+    *,
+    max_integrity_check_bytes: int | None = _STATE_DB_FULL_INTEGRITY_CHECK_MAX_BYTES,
+) -> Optional[str]:
+    """Return a short reason when the expensive full DB scan should be skipped."""
+    if max_integrity_check_bytes is None or max_integrity_check_bytes < 0:
+        return None
+    try:
+        db_size = db_path.stat().st_size
+    except OSError:
+        return None
+    if db_size <= max_integrity_check_bytes:
+        return None
+    return (
+        f"{db_size // (1024 * 1024)} MB exceeds "
+        f"{max_integrity_check_bytes // (1024 * 1024)} MB"
+    )
+
+
+def _db_opens_cleanly(
+    db_path: Path,
+    *,
+    max_integrity_check_bytes: int | None = _STATE_DB_FULL_INTEGRITY_CHECK_MAX_BYTES,
+) -> Optional[str]:
     """Probe a DB on a fresh connection. Returns None if healthy, else a reason.
 
     Runs the first statement that trips the malformed-schema parse (``PRAGMA journal_mode``),
@@ -775,10 +802,14 @@ def _db_opens_cleanly(db_path: Path) -> Optional[str]:
             # tokenizer absence must never classify as corruption.
             load_fts5_cjk_extension(conn)
             conn.execute("PRAGMA journal_mode").fetchone()
-            rows = conn.execute("PRAGMA integrity_check").fetchall()
-            problems = [str(r[0]) for r in rows if r and str(r[0]).lower() != "ok"]
-            if problems:
-                return "; ".join(problems[:3])
+            if _db_full_integrity_check_skip_reason(
+                db_path,
+                max_integrity_check_bytes=max_integrity_check_bytes,
+            ) is None:
+                rows = conn.execute("PRAGMA integrity_check").fetchall()
+                problems = [str(r[0]) for r in rows if r and str(r[0]).lower() != "ok"]
+                if problems:
+                    return "; ".join(problems[:3])
             conn.execute("SELECT COUNT(*) FROM sessions").fetchone()
             # FTS5 read probe: partial shadow-table corruption makes MATCH/snippet/rank raise while integrity_check
             # reports healthy. MATCH '""' (empty phrase) parses, scans zero rows and exercises the shadow tables;

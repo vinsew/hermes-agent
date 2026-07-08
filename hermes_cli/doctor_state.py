@@ -329,6 +329,14 @@ def _state_db_health(f: Finding, should_fix: bool, state_db_path: Path, _DHH: st
             return
         check_warn(f"{_DHH}/state.db fails a write-health probe (FTS index may be corrupt)", f"({_write_reason})")
         _repair_state_db(f, should_fix, state_db_path, "fts")
+    else:
+        from hermes_state_repair import _db_full_integrity_check_skip_reason
+        _skip_reason = _db_full_integrity_check_skip_reason(state_db_path)
+        if _skip_reason:
+            check_info(
+                f"{_DHH}/state.db full integrity scan skipped for large DB "
+                f"({_skip_reason}; targeted read/write probe passed)"
+            )
 
 
 def _state_db_stats(issues: list, state_db_path: Path) -> None:
