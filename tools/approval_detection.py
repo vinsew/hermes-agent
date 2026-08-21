@@ -1866,6 +1866,26 @@ def _quoted_text_is_executed(variant: str, pattern_re: "re.Pattern[str] | _PipeR
     return False
 
 
+def _literal_kill_targets_current_host(command: str) -> bool:
+    """Return whether a shell ``kill`` targets this Hermes host process.
+
+    Name-based guards catch ``pkill hermes`` but cannot recognize a literal
+    PID copied from ``ps`` output.  Protect only this process and its direct
+    parent so ordinary child-process cleanup remains unaffected.
+    """
+    protected = {pid for pid in (os.getpid(), os.getppid()) if pid > 1}
+    if not protected:
+        return False
+
+    pid_alternation = "|".join(str(pid) for pid in sorted(protected))
+    pattern = re.compile(
+        rf"{_CMDPOS}kill\s+(?:(?:-[^\s;|&]+|--signal(?:=[^\s;|&]+)?)\s+)*"
+        rf"(?:--\s+)?(?:{pid_alternation})(?=\s|$|[;|&])",
+        re.IGNORECASE,
+    )
+    return any(pattern.search(variant) for variant in _command_detection_variants(command))
+
+
 def _iter_dangerous_descriptions(command: str, only: frozenset[str] | None = None):
     """Yield the description (= pattern key) of every dangerous match, in detection order; may repeat.
     *only* restricts the scan to those pattern rules and skips the parser-limit, execution-flag and
@@ -1905,6 +1925,8 @@ def _iter_dangerous_descriptions(command: str, only: frozenset[str] | None = Non
         if _INVISIBLE_UNICODE_DESCRIPTION in only and _HIDDEN_VARIATION_SELECTOR_RE.search(command):
             yield _INVISIBLE_UNICODE_DESCRIPTION
         return
+    if _literal_kill_targets_current_host(command):
+        yield "kill the current Hermes host process by PID (self-termination)"
     normalized = _normalize_command_for_detection(command)
     for description, _ in _execution_flag_findings(normalized):
         yield description
