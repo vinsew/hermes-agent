@@ -1786,14 +1786,31 @@ def _display_mouse_tracking(display: dict) -> str:
     return "off" if raw is False or raw == 0 else "all"
 
 
+_REASONING_PROVIDER: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "tui_reasoning_provider", default=""
+)
+
+
 def _load_reasoning_config(model: str = "") -> dict | None:
     """Via the shared chokepoint :func:`hermes_constants.resolve_reasoning_config` (per-model override >
     global ``agent.reasoning_effort``; YAML False = disabled).
 
-    Closes #21256.
+    Closes #21256. The active provider travels through :data:`_REASONING_PROVIDER`
+    (set around resolution by :func:`_reasoning_config_for`) so OpenCode
+    Free/Go/Zen default to their provider-max effort while this wrapper keeps
+    its single-argument signature.
     """
     from hermes_constants import resolve_reasoning_config
-    return resolve_reasoning_config(_load_cfg(), model)
+    return resolve_reasoning_config(_load_cfg(), model, _REASONING_PROVIDER.get())
+
+
+def _reasoning_config_for(model: str, provider: str) -> dict | None:
+    """Resolve reasoning effort for *model* with *provider* context applied."""
+    token = _REASONING_PROVIDER.set(provider)
+    try:
+        return _load_reasoning_config(model)
+    finally:
+        _REASONING_PROVIDER.reset(token)
 
 
 _SERVICE_TIER_ALIASES = {"fast": "priority", "priority": "priority", "on": "priority", "auto": "auto", "cold": "cold"}
@@ -2456,7 +2473,8 @@ def _make_agent(
         credential_pool=runtime.get("credential_pool"), quiet_mode=True,
         verbose_logging=False,  # DEBUG agent logging; independent of tool_progress_mode
         reasoning_config=(
-            reasoning_config_override if reasoning_config_override is not None else _load_reasoning_config(str(model or ""))),
+            reasoning_config_override if reasoning_config_override is not None else _reasoning_config_for(
+                str(model or ""), str(runtime.get("provider") or ""))),
         service_tier=service_tier_override if service_tier_override is not None else _load_service_tier(),
         enabled_toolsets=_load_enabled_toolsets(platform),
         # OpenRouter provider_routing prefs (gateway + CLI parity).

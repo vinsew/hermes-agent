@@ -542,7 +542,8 @@ def _run_agent(
 
     from hermes_constants import parse_reasoning_effort, resolve_reasoning_config
 
-    reasoning_config = resolve_reasoning_config(cfg, choice.model)
+    reasoning_config = resolve_reasoning_config(
+        cfg, choice.model, str(getattr(choice, "provider", "") or runtime.get("provider") or ""))
     if reasoning is not None and str(reasoning).strip():
         parsed_reasoning = parse_reasoning_effort(reasoning)
         if parsed_reasoning is None:

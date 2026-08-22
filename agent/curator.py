@@ -1060,7 +1060,7 @@ def _run_llm_review(prompt: str) -> Dict[str, Any]:
             request_overrides=request_overrides, **agent_kwargs,
             # Same chokepoint as every other surface: without it ``agent.reasoning_effort`` never reaches
             # the review fork and the transport applies its default effort (a 400 on non-reasoning models).
-            reasoning_config=resolve_reasoning_config(load_config_readonly(), model_name),
+            reasoning_config=resolve_reasoning_config(load_config_readonly(), model_name, provider),
             # No ``terminal``: a shell mv/cp/rm under the skills tree writes bytes
             # with NO ledger entry, so rollback would restore a hollow skill. Every
             # mutation goes through ledgered skill_manage; dropping the toolset

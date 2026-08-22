@@ -241,7 +241,9 @@ def _aggregator_reasoning_config(aggregator: dict[str, Any]) -> dict[str, Any] |
     try:
         from hermes_cli.config import load_config
         from hermes_constants import resolve_reasoning_config
-        return resolve_reasoning_config(load_config() or {}, str(aggregator.get("model") or ""))
+        return resolve_reasoning_config(
+            load_config() or {}, str(aggregator.get("model") or ""),
+            str(aggregator.get("provider") or ""))
     except Exception:  # pragma: no cover - bad config must not break MoA
         return None
 

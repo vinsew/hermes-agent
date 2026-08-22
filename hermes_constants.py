@@ -1412,7 +1412,21 @@ def resolve_per_model_provider_routing(model: str, models: dict | None) -> dict:
     return {}
 
 
-def resolve_reasoning_config(cfg: dict | None, model: str = "") -> dict | None:
+def _is_opencode_provider(provider: str) -> bool:
+    """Return True for OpenCode Free/Go/Zen and their custom-family aliases."""
+    value = str(provider or "").strip().lower().replace("_", "-")
+    if value.startswith("custom:"):
+        value = value[7:]
+    return value in {"opencode-free", "opencode-go", "opencode-zen", "opencode"} or (
+        (value.startswith("opencode-go") or value.startswith("opencode-zen"))
+        and len(value) > len("opencode-go")
+        and value[len("opencode-go")] == "-"
+    )
+
+
+def resolve_reasoning_config(
+    cfg: dict | None, model: str = "", provider: str = ""
+) -> dict | None:
     """Effective reasoning config for *model*: per-model override, then global ``agent.reasoning_effort``.
 
     Single chokepoint for every surface (CLI, gateway, TUI, cron, ``/model``, fallback activation).
@@ -1428,6 +1442,12 @@ def resolve_reasoning_config(cfg: dict | None, model: str = "") -> dict | None:
     per_model = resolve_per_model_reasoning_effort(model, agent_cfg.get("reasoning_overrides") or {})
     if per_model is not None:
         return per_model
+
+    # OpenCode Free/Go/Zen default to the strongest provider-level ask. The
+    # existing per-model wire clamping then maps this to the top tier each
+    # model actually accepts, without overriding an explicit user choice.
+    if _is_opencode_provider(provider):
+        return parse_reasoning_effort("max")
 
     # Keep the raw value: ``or ""`` would turn a YAML False into "" and silently re-enable thinking.
     effort = agent_cfg.get("reasoning_effort", "")

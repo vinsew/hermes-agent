@@ -495,7 +495,8 @@ class SessionManager:
             # Same chokepoint as the CLI/gateway/TUI/cron: without it ``agent.reasoning_effort: none`` never
             # reaches an ACP session and the transport applies its default effort (a 400 on non-reasoning
             # models). Resolved against the session's model so per-model overrides apply.
-            "reasoning_config": resolve_reasoning_config(config, model or default_model),
+            "reasoning_config": resolve_reasoning_config(
+                config, model or default_model, str(requested_provider or config_provider or "")),
         }
         resolve_error: Exception | None = None
         try:

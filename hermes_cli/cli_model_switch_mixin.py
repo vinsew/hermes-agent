@@ -41,7 +41,8 @@ def _resolve_cli_reasoning(cli) -> None:
     from cli import CLI_CONFIG
     from hermes_constants import resolve_reasoning_config
     # getattr: tests drive /new unbound on a SimpleNamespace without ``model`` (blank -> config default).
-    cli.reasoning_config = resolve_reasoning_config(CLI_CONFIG, getattr(cli, "model", None) or "")
+    cli.reasoning_config = resolve_reasoning_config(
+        CLI_CONFIG, getattr(cli, "model", None) or "", str(getattr(cli, "provider", "") or ""))
 
 
 def stored_session_route(session_meta, *, current_model, current_provider):

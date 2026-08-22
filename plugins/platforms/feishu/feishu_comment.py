@@ -457,7 +457,8 @@ def _resolve_model_and_runtime() -> Tuple[str, dict]:
     # Same chokepoint as every other surface: without it ``agent.reasoning_effort`` never reaches the
     # comment agent and the transport applies its default effort (a 400 on non-reasoning models).
     from hermes_constants import resolve_reasoning_config
-    runtime_kwargs["reasoning_config"] = resolve_reasoning_config(_load_gateway_config(), model)
+    runtime_kwargs["reasoning_config"] = resolve_reasoning_config(
+        _load_gateway_config(), model, str(runtime_kwargs.get("provider") or ""))
     return model, runtime_kwargs
 
 

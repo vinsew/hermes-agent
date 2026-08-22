@@ -511,7 +511,9 @@ def _resolve_cron_enabled_toolsets(job: dict, cfg: dict) -> list[str]:
         ) from exc
 
 
-def _resolve_job_reasoning_config(job: dict, cfg: dict, model: str) -> dict | None:
+def _resolve_job_reasoning_config(
+    job: dict, cfg: dict, model: str, provider: str = ""
+) -> dict | None:
     """Effective reasoning config for a cron run. A per-job ``reasoning_effort`` pin beats global
     and per-model config and is model-independent by design (also governs an auth-fallback swap);
     clamping stays with provider transports. An unparseable pin warns and falls back to config."""
@@ -531,7 +533,9 @@ def _resolve_job_reasoning_config(job: dict, cfg: dict, model: str) -> dict | No
             job.get("id", "?"),
             pinned,
             job.get("id", "?"))
-    return resolve_reasoning_config(cfg if isinstance(cfg, dict) else {}, str(model))
+    return resolve_reasoning_config(
+        cfg if isinstance(cfg, dict) else {}, str(model), provider
+    )
 
 
 from cron.jobs import (
@@ -2388,7 +2392,8 @@ def _resolve_cron_agent_setup(job: dict, job_id: str, job_name: str, jc) -> _Cro
     setup.runtime, setup.model = _resolve_job_runtime(job, job_id, jc)
     setup.fallback_notice = setup.runtime.pop("_fallback_notice", None)
     setup.reasoning_config = _resolve_job_reasoning_config(
-        job, _cfg if isinstance(_cfg, dict) else {}, str(setup.model)
+        job, _cfg if isinstance(_cfg, dict) else {}, str(setup.model),
+        str(primary_provider_for_drift or ""),
     )
     # Mid-run provider ladder: same rule as resolution above, so a pinned job cannot be swapped
     # onto the global chain by a 5xx/429 either.
