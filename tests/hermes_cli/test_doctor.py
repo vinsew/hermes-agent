@@ -245,14 +245,6 @@ class TestDoctorToolAvailabilityOverrides:
 
 
 
-
-
-
-
-
-
-
-
 def test_doctor_reports_vercel_backend_diagnostics(monkeypatch, tmp_path):
     monkeypatch.setenv("TERMINAL_ENV", "vercel_sandbox")
     monkeypatch.setenv("TERMINAL_VERCEL_RUNTIME", "python3.13")

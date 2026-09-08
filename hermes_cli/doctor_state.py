@@ -16,13 +16,10 @@ from hermes_state_holders import read_only_db_uri
 
 
 def _honcho_is_configured_for_doctor() -> bool:
-    """Return True when Honcho is configured, even if this process has no active session."""
-    try:
-        from plugins.memory import import_provider_module
-        cfg = import_provider_module("honcho", "client").HonchoClientConfig.from_global_config()
-        return bool(cfg.enabled and (cfg.api_key or cfg.base_url))
-    except Exception:
-        return False
+    """Always False: the Honcho memory provider is retired in this installation
+    (user decision, 2026-05-01). Kept as a stub because unrelated doctor checks
+    monkeypatch it as an unrelated-config guard."""
+    return False
 
 
 def _doctor_memory_config(hermes_home: Path | None = None) -> dict:

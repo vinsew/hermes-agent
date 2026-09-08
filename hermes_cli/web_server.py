@@ -1661,7 +1661,6 @@ _PLUGIN_COMPAT_LAZY = {
     'PtyUnavailableError': ('hermes_cli.pty_bridge', 'PtyUnavailableError'),
     'RawConfigUpdate': ('hermes_cli.web_models', 'RawConfigUpdate'),
     'RegistryFull': ('hermes_cli.pty_session', 'RegistryFull'),
-    'STORAGE_HONCHO_HOST_BLOCK': ('plugins.memory.config_schema', 'STORAGE_HONCHO_HOST_BLOCK'),
     'SessionImport': ('hermes_cli.web_models', 'SessionImport'),
     'SessionPrune': ('hermes_cli.web_models', 'SessionPrune'),
     'SessionRename': ('hermes_cli.web_models', 'SessionRename'),
