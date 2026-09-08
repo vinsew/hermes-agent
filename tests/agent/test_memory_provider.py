@@ -899,8 +899,6 @@ class TestOnMemoryWriteBridge:
         assert good.memory_writes == [("add", "user", "test")]
 
 
-
-
 class TestMemoryToolToolsetGate:
     """Issue #5544: memory provider tools must respect platform_toolsets.
 
