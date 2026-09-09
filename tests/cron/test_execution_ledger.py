@@ -490,3 +490,23 @@ def test_job_listing_exposes_latest_execution(monkeypatch, tmp_path):
     listed = jobs.list_jobs(include_disabled=True)
     assert listed[0]["latest_execution"]["id"] == record["id"]
     assert listed[0]["latest_execution"]["status"] == "running"
+
+
+def test_live_owner_survives_unavailable_fingerprint(monkeypatch, tmp_path):
+    executions = _point_ledger(monkeypatch, tmp_path)
+    record = executions.create_execution("live-backup", source="builtin")
+    executions.mark_execution_running(record["id"])
+    monkeypatch.setattr(executions, "_PROCESS_ID", "other-observer")
+    monkeypatch.setattr(executions, "_process_start_time", lambda _pid: None)
+    assert executions.recover_interrupted_executions() == 0
+    assert executions.get_execution(record["id"])["status"] == "running"
+
+
+def test_reused_pid_still_recovers_abandoned_execution(monkeypatch, tmp_path):
+    executions = _point_ledger(monkeypatch, tmp_path)
+    monkeypatch.setattr(executions, "_process_start_time", lambda _pid: 123)
+    record = executions.create_execution("old-owner", source="builtin")
+    monkeypatch.setattr(executions, "_PROCESS_ID", "other-observer")
+    monkeypatch.setattr(executions, "_process_start_time", lambda _pid: 456)
+    assert executions.recover_interrupted_executions() == 1
+    assert executions.get_execution(record["id"])["status"] == "unknown"
