@@ -317,6 +317,12 @@ def _apply_capabilities(rows: list[dict], *, metadata_config: dict | None = None
     serving aggregator's detail overrides models.dev (adds ``can_disable_reasoning``). ``supported_efforts``
     is deliberately NOT forwarded — it under-reports levels that work."""
     from hermes_cli.models import model_supports_fast_mode
+    from hermes_constants import _is_opencode_provider, resolve_reasoning_config
+    from hermes_cli.config import load_config
+    from agent.reasoning_effort import clamp_effort
+    from agent.transports.codex import _profile_declared_efforts
+
+    reasoning_config = load_config() if any(_is_opencode_provider(row.get("slug", "")) for row in rows) else {}
 
     try:
         from agent.models_dev import get_model_capabilities
@@ -351,6 +357,19 @@ def _apply_capabilities(rows: list[dict], *, metadata_config: dict | None = None
                     entry["reasoning"] = False
                 elif detail:
                     entry["can_disable_reasoning"] = not detail.get("mandatory")
+
+            if entry["reasoning"] and _is_opencode_provider(slug):
+                effective = resolve_reasoning_config(reasoning_config, model, slug) or {}
+                declared = _profile_declared_efforts(slug, model, row.get("api_url") or row.get("base_url"))
+                if declared == ():
+                    entry["reasoning"] = False
+                else:
+                    # Reuse the runtime default and wire clamp, not models.dev's
+                    # sometimes incomplete advertised effort vocabulary.
+                    entry["default_reasoning_effort"] = (
+                        "none" if effective.get("enabled") is False else
+                        clamp_effort(effective.get("effort", "max"), declared)
+                    )
 
             caps[model] = entry
 

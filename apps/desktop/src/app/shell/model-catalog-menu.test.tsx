@@ -80,7 +80,10 @@ describe('the current row effort', () => {
 
 // A minimal controller — these tests are about the CATALOG's own behaviour
 // (what it lists, what it offers), not about what any host does with a pick.
-function renderMenu(current: Partial<ModelMenuController['current']> = {}) {
+function renderMenu(
+  current: Partial<ModelMenuController['current']> = {},
+  overrides: Partial<Omit<ModelMenuController, 'current'>> = {},
+) {
   const select = vi.fn()
 
   const controller: ModelMenuController = {
@@ -88,7 +91,8 @@ function renderMenu(current: Partial<ModelMenuController['current']> = {}) {
     current: { effort: '', fast: false, model: '', provider: '', ...current },
     presetFor: () => ({}),
     select,
-    setOptions: vi.fn()
+    setOptions: vi.fn(),
+    ...overrides
   }
 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -218,5 +222,32 @@ describe('in-flight local downloads', () => {
     expect(screen.queryByText(/Qwen3\.6 27B/i)).toBeNull()
     expect(screen.queryByText('Qwen3.8 Flash Next (UD-Q4_K_XL)')).toBeNull()
     expect(screen.queryByText('Local')).toBeNull()
+  })
+})
+
+
+describe('provider reasoning defaults', () => {
+  afterEach(() => $defaultReasoningEffort.set(''))
+
+  it.each([
+    ['opencode-free', 'max', undefined, true, 'max'],
+    ['opencode-go', 'xhigh', undefined, true, 'xhigh'],
+    ['opencode-zen', 'max', 'low', true, 'low'],
+    ['custom:opencode-go-private', 'max', 'none', true, 'none'],
+    ['google', undefined, undefined, true, 'high'],
+    ['opencode-free', 'max', undefined, false, undefined]
+  ])('selects %s with default %s and preset %s', async (provider, defaultEffort, saved, reasoning, expected) => {
+    $defaultReasoningEffort.set('high')
+    const applyPreset = vi.fn()
+    getGlobalModelOptions.mockResolvedValue({ providers: [{
+      slug: provider, name: provider, models: ['fixture-model'],
+      capabilities: { 'fixture-model': { reasoning, fast: false, default_reasoning_effort: defaultEffort } }
+    }] })
+    renderMenu({}, { applyPreset, presetFor: () => ({ effort: saved }) })
+    const row = await screen.findByText(/Fixture model/i)
+    fireEvent.click(row)
+    await waitFor(() => expect(applyPreset).toHaveBeenCalledWith(
+      { effort: expected, fast: undefined }, { model: 'fixture-model', provider }
+    ))
   })
 })

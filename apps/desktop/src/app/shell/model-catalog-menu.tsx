@@ -345,7 +345,7 @@ export function ModelCatalogMenu({
 
     controller.applyPreset(
       {
-        effort: (caps?.reasoning ?? true) ? (preset.effort ?? defaultEffort) : undefined,
+        effort: (caps?.reasoning ?? true) ? (preset.effort ?? caps?.default_reasoning_effort ?? defaultEffort) : undefined,
         fast: (caps?.fast ?? false) ? (preset.fast ?? false) : undefined
       },
       { model: family.id, provider: provider.slug }
@@ -578,6 +578,7 @@ export function ModelCatalogMenu({
                     // the active model, otherwise its remembered preset. Row
                     // label AND submenu read from these so they never disagree.
                     const preset = controller.presetFor(group.provider.slug, family.id)
+                    const rowDefaultEffort = caps?.default_reasoning_effort ?? defaultEffort
                     const effEffort = isCurrent ? current.effort : (preset.effort ?? '')
                     const effFast = isCurrent ? current.fast : (preset.fast ?? false)
 
@@ -592,7 +593,7 @@ export function ModelCatalogMenu({
                       tag || null,
                       fastControl.kind !== 'none' && fastControl.on ? copy.fast : null,
                       (caps?.reasoning ?? true) && !(isCurrent && current.effortPending)
-                        ? reasoningEffortLabel(effEffort || defaultEffort, isCurrent ? current.effortWire : undefined)
+                        ? reasoningEffortLabel(effEffort || rowDefaultEffort, isCurrent ? current.effortWire : undefined)
                         : null
                     ]
                       .filter(Boolean)
@@ -651,7 +652,7 @@ export function ModelCatalogMenu({
                         </DropdownMenuSubTrigger>
                         <ModelEditSubmenu
                           canDisableReasoning={caps?.can_disable_reasoning ?? undefined}
-                          defaultEffort={defaultEffort}
+                          defaultEffort={rowDefaultEffort}
                           effort={effEffort}
                           effortWire={isCurrent ? current.effortWire : undefined}
                           fastControl={fastControl}
