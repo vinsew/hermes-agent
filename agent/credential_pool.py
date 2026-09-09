@@ -1469,6 +1469,10 @@ class CredentialPool(CredentialPoolAdminMixin, CredentialPoolModelCooldownMixin)
     # ---- refresh -----------------------------------------------------------
 
     def _refresh_entry(self, entry: PooledCredential, *, force: bool) -> Optional[PooledCredential]:
+        if self.provider == "anthropic" and entry.source == "claude_code":
+            from agent.anthropic_credentials import claude_code_borrowing_disabled
+            if claude_code_borrowing_disabled():
+                return None
         if entry.auth_type != AUTH_TYPE_OAUTH or not entry.refresh_token:
             if force:
                 self._mark_exhausted(entry, None)
@@ -1622,6 +1626,10 @@ class CredentialPool(CredentialPoolAdminMixin, CredentialPoolModelCooldownMixin)
             spent_rotation_source_path,
         )
 
+        from agent.anthropic_credentials import claude_code_borrowing_disabled
+        if entry.source == "claude_code" and claude_code_borrowing_disabled():
+            raise PermissionError("Claude Code credential borrowing is disabled")
+
         # Never POST a refresh token another process already spent: the
         # durable sidecar verdict is what a fresh interpreter sees here.
         source_path = spent_rotation_source_path(entry.source)
@@ -1712,6 +1720,10 @@ class CredentialPool(CredentialPoolAdminMixin, CredentialPoolModelCooldownMixin)
         pre-POST sync and the HTTP call; re-read the provider's token
         authority once more and adopt fresher tokens before giving up.
         """
+        if self.provider == "anthropic" and entry.source == "claude_code":
+            from agent.anthropic_credentials import claude_code_borrowing_disabled
+            if claude_code_borrowing_disabled():
+                return None
         if self.provider == "anthropic":
             if entry.source == "claude_code":
                 synced = self._sync_anthropic_entry_from_credentials_file(entry)
@@ -2509,6 +2521,10 @@ class _Seeder:
 
 
 def _seed_anthropic_singletons(seed: _Seeder) -> None:
+    from agent.anthropic_credentials import claude_code_borrowing_disabled
+    if claude_code_borrowing_disabled():
+        seed.changed |= _retain_sources_not_in(seed.entries, {"claude_code"})
+
     # Only auto-discover external credentials (Claude Code, Hermes PKCE) when
     # the user explicitly configured anthropic; otherwise auxiliary fallback
     # chains would read ~/.claude/.credentials.json without consent (PR #4210).

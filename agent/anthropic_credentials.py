@@ -55,6 +55,11 @@ def _getenv(name: str, default: str = "") -> str:
     return val if val is not None else default
 
 
+def claude_code_borrowing_disabled() -> bool:
+    """Host-level opt-out: never read, rotate, or write another app's OAuth grant."""
+    return os.getenv("HERMES_DISABLE_CLAUDE_CODE_CREDENTIALS", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _first_env(*names: str) -> str:
     """First non-blank (stripped) value among *names*, else ''."""
     return next((v for v in (_getenv(n).strip() for n in names) if v), "")
@@ -351,10 +356,15 @@ def read_claude_code_credentials() -> Optional[Dict[str, Any]]:
     non-expired one (Claude Code 2.1.x refreshes one source but not the other), else the later ``expiresAt`` so a
     refresh uses the freshest refreshToken. ~/.claude.json primaryApiKey is deliberately excluded.
 
-    This is the only reader of the borrowed login, so ``auth.adopt_external_logins: false`` is enforced here:
-    every resolver, pool seed/sync and 401 refresher then sees "no Claude Code login" and never touches the file."""
+    Two independent opt-outs are enforced here, both read-only gates on this single reader:
+    ``auth.adopt_external_logins: false`` (upstream switch) and
+    ``HERMES_DISABLE_CLAUDE_CODE_CREDENTIALS`` (this installation's host-level switch).
+    Either one gates the borrowed login, so every resolver, pool seed/sync and 401 refresher
+    then sees "no Claude Code login" and never touches the file."""
     from agent.credential_sources import adopt_external_logins_enabled
     if not adopt_external_logins_enabled():
+        return None
+    if claude_code_borrowing_disabled():
         return None
     kc_creds = _read_claude_code_credentials_from_keychain()
     file_creds = _read_claude_code_credentials_from_file()
@@ -465,6 +475,8 @@ def _refresh_oauth_token(creds: Dict[str, Any]) -> Optional[str]:
     Claude Code refreshes on its own schedule, so we first re-read the live sources and adopt an already-rotated
     token instead of racing it into ``invalid_grant``. Read, decision, POST and write-back share the pool's
     path-keyed cross-process lock (else two profiles can spend one refresh token)."""
+    if claude_code_borrowing_disabled():
+        return None
     try:
         from hermes_cli.auth import AUTH_LOCK_TIMEOUT_SECONDS, _auth_store_lock, env_float
         refresh_timeout_seconds = env_float("HERMES_ANTHROPIC_REFRESH_TIMEOUT_SECONDS", 20)
@@ -537,6 +549,8 @@ def _write_claude_code_credentials(
     """Commit refreshed credentials to ~/.claude/.credentials.json; ``CredentialPersistError`` on any failure (a
     corrupt existing file included). *scopes* (or the previously stored scopes) are persisted because Claude Code
     >=2.1.81 gates on ``"user:inference"`` being present."""
+    if claude_code_borrowing_disabled():
+        raise PermissionError("Claude Code credential borrowing is disabled")
     cred_path = claude_code_credentials_path()
     try:
         existing = json.loads(cred_path.read_text(encoding="utf-8")) if cred_path.exists() else {}
@@ -608,6 +622,8 @@ def _mirror_claude_code_credentials_to_keychain(
 
 def _resolve_claude_code_token_from_credentials(creds: Optional[Dict[str, Any]] = None) -> Optional[str]:
     """Resolve a token from Claude Code credential files, refreshing if needed."""
+    if claude_code_borrowing_disabled():
+        return None
     creds = creds or read_claude_code_credentials()
     if not creds:
         return None
@@ -641,6 +657,7 @@ def _resolve_anthropic_pool_token(*, skip_borrowed: bool = False) -> Optional[st
     """First available Anthropic OAuth token from credential_pool, read-only: enumerates with ``clear_expired=False,
     refresh=False`` (never ``select()``) so diagnostic call sites (account_usage, ``hermes models``) never mutate
     auth.json or hit the network; refresh-on-expiry belongs to the API call path's pool recovery."""
+    skip_borrowed = skip_borrowed or claude_code_borrowing_disabled()
     try:
         from agent.credential_pool import AUTH_TYPE_OAUTH, load_pool
         entries, _pending = load_pool("anthropic")._available_entries(clear_expired=False, refresh=False)
