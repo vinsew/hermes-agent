@@ -286,7 +286,8 @@ On API errors, the adapter uses a simple retry strategy:
 |-----------|----------|
 | Transient error (1st–2nd) | Retry after 2 seconds |
 | Repeated errors (3+) | Back off for 30 seconds, then reset counter |
-| Session expired (`errcode=-14`) | Pause for 10 minutes (re-login may be needed) |
+| Receive session expired (`ret` or `errcode=-14`) | Mark the channel failed and stop polling; sign in with `hermes gateway setup`, then restart the gateway |
+| Ambiguous stale session (`-2`, `unknown error`) | Mark the channel retrying, pause for 10 minutes, and restore connected status after a successful poll |
 | Timeout | Immediately re-poll (normal long-poll behavior) |
 
 ### Deduplication

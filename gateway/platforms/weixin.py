@@ -797,6 +797,7 @@ class WeixinAdapter(OwnAccessPolicyMixin, BasePlatformAdapter):
         sync_buf = _load_sync_buf(self._hermes_home, self._account_id)
         timeout_ms = LONG_POLL_TIMEOUT_MS
         consecutive_failures = 0
+        _receive_degraded = False
 
         async def backoff() -> int:
             """Sleep for the failure streak; returns the new streak count (0 after a full streak)."""
@@ -812,8 +813,18 @@ class WeixinAdapter(OwnAccessPolicyMixin, BasePlatformAdapter):
                     timeout_ms = suggested_timeout
                 ret, errcode = response.get("ret", 0), response.get("errcode", 0)
                 if ret not in {0, None} or errcode not in {0, None}:
+                    if SESSION_EXPIRED_ERRCODE in (ret, errcode):
+                        self._set_fatal_error(
+                            "weixin_session_expired",
+                            "Weixin session expired; run hermes gateway setup to sign in again, then restart the gateway.",
+                            retryable=False,
+                        )
+                        await self._notify_fatal_error()
+                        return
                     if _is_session_expired(response, ret, errcode):
-                        logger.error("[%s] Session expired; pausing for 10 minutes", self.name)
+                        self._mark_degraded()
+                        _receive_degraded = True
+                        logger.error("[%s] Stale session; pausing for 10 minutes", self.name)
                         await asyncio.sleep(600)
                         consecutive_failures = 0
                         continue
@@ -822,6 +833,9 @@ class WeixinAdapter(OwnAccessPolicyMixin, BasePlatformAdapter):
                                    response.get("errmsg", ""), consecutive_failures, MAX_CONSECUTIVE_FAILURES)
                     consecutive_failures = await backoff()
                     continue
+                if consecutive_failures or _receive_degraded:
+                    self._mark_connected()
+                _receive_degraded = False
                 consecutive_failures = 0
                 # Dispatch before persisting: the off-loop write is an await, and a disconnect that
                 # cancels it must not leave the advanced cursor on disk with this batch undelivered.
