@@ -791,7 +791,7 @@ interface CronJobDetailProps {
   onTrigger: () => void
 }
 
-function CronJobDetail({ busy, c, job, onEdit, onOpenSession, onPauseResume, onTrigger }: CronJobDetailProps) {
+export function CronJobDetail({ busy, c, job, onEdit, onOpenSession, onPauseResume, onTrigger }: CronJobDetailProps) {
   const state = jobState(job)
   const isPaused = state === 'paused'
   const deliver = jobDeliver(job)
@@ -819,6 +819,7 @@ function CronJobDetail({ busy, c, job, onEdit, onOpenSession, onPauseResume, onT
         <PanelMeta
           rows={[
             { label: c.frequencyLabel, value: jobScheduleDisplay(job) },
+            { label: c.lastRunResult, value: job.last_status ? (c.runResults[job.last_status] ?? job.last_status) : '—' },
             { label: c.last.replace(/:$/, ''), value: formatTime(job.last_run_at) },
             {
               label: (nextRunOverdueMs(job) === null ? c.next : c.overdueSince).replace(/:$/, ''),
@@ -937,7 +938,7 @@ function CronJobRuns({
   return (
     <div>
       <PanelSectionLabel className="mb-1.5">
-        {c.runHistory}
+        {c.runSessions}
         {runs && runs.length > 0 ? ` · ${runs.length}` : ''}
       </PanelSectionLabel>
       {runs === null ? (
@@ -945,7 +946,7 @@ function CronJobRuns({
           <Codicon name="loading" size="0.75rem" spinning />
         </div>
       ) : runs.length === 0 ? (
-        <div className="py-1 text-xs text-muted-foreground">{c.noRuns}</div>
+        <div className="py-1 text-xs text-muted-foreground">{c.noRunSessions}</div>
       ) : (
         <div className="flex flex-col gap-px">
           {runs.map(run => (

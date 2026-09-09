@@ -357,7 +357,7 @@ function CronJobSidebarRow({
           <Tip label={label}>
             <SidebarRowBody
               aria-expanded={expanded}
-              aria-label={expanded ? c.hideRuns : c.showRuns}
+              aria-label={expanded ? c.hideRunSessions : c.showRunSessions}
               className="focus-visible:bg-(--chrome-action-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
               onClick={onTogglePeek}
             >
@@ -447,7 +447,7 @@ function CronJobSidebarRuns({ jobId, onOpenRun }: { jobId: string; onOpenRun: (s
           <GlyphSpinner ariaLabel={c.loading} className="text-[0.75rem]" />
         </div>
       ) : runs.length === 0 ? (
-        <div className="py-1 pl-1 text-[0.6875rem] text-(--ui-text-tertiary)">{c.noRuns}</div>
+        <div className="py-1 pl-1 text-[0.6875rem] text-(--ui-text-tertiary)">{c.noRunSessions}</div>
       ) : (
         <>
           {runs.map(run => (

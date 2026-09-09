@@ -2734,6 +2734,12 @@ export interface Translations {
     showRuns: string
     hideRuns: string
     runHistory: string
+    runSessions: string
+    noRunSessions: string
+    showRunSessions: string
+    hideRunSessions: string
+    lastRunResult: string
+    runResults: Record<string, string>
     actionsTitle: string
     resume: string
     pause: string

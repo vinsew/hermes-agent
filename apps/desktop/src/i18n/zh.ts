@@ -3102,6 +3102,12 @@ export const zh = defineLocale({
     showRuns: '显示运行记录',
     hideRuns: '隐藏运行记录',
     runHistory: '运行记录',
+    runSessions: '关联会话',
+    noRunSessions: '暂无关联会话',
+    showRunSessions: '显示关联会话',
+    hideRunSessions: '隐藏关联会话',
+    lastRunResult: '上次执行结果',
+    runResults: { ok: '成功', error: '失败', skipped: '已跳过' },
 
     actionsTitle: '定时任务操作',
     resume: '恢复定时任务',
