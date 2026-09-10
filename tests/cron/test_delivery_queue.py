@@ -210,3 +210,38 @@ def test_same_gateway_recovers_terminalization_failure_without_resending(
     status = queue.get_status("exec-4")
     assert status["status"] == "unknown"
     assert "not retried" in status["error"]
+
+
+def test_direct_wecom_delivery_uses_existing_gateway_without_new_socket(monkeypatch):
+    import cron.scheduler_delivery as delivery
+    import cron.delivery_queue as queue
+    import gateway.status as status
+    import gateway.config as config
+    job={'id':'job-wecom','execution_id':'direct-wecom','deliver':'wecom'}
+    monkeypatch.delenv('_HERMES_CRON_EXTERNAL_WORKER',raising=False)
+    monkeypatch.setattr(delivery,'_resolve_delivery_targets',lambda *a,**k:[{'platform':'wecom','chat_id':'owner'}])
+    monkeypatch.setattr(status,'get_running_pid',lambda **k:delivery.os.getpid()+1)
+    def forbidden():
+        raise AssertionError('must not open a second WeCom socket via standalone configuration')
+    monkeypatch.setattr(config,'load_gateway_config',forbidden)
+    enqueue=Mock(return_value=None)
+    monkeypatch.setattr(queue,'enqueue_and_wait',enqueue)
+    assert delivery._deliver_result(job,'acceptance') is None
+    enqueue.assert_called_once_with('direct-wecom',job,'acceptance',for_failure=False)
+
+
+@pytest.mark.parametrize('platform,execution,adapters,pid_kind,expected',[
+    ('wecom',True,None,'other',True),
+    ('wecom',True,None,'self',False),
+    ('wecom',True,None,'absent',False),
+    ('wecom',True,{},'other',False),
+    ('wecom',False,None,'other',False),
+    ('telegram',True,None,'other',False),
+])
+def test_live_wecom_handoff_scope(monkeypatch,platform,execution,adapters,pid_kind,expected):
+    import cron.scheduler_delivery as delivery
+    import gateway.status as status
+    pid={'other':delivery.os.getpid()+1,'self':delivery.os.getpid(),'absent':None}[pid_kind]
+    monkeypatch.setattr(status,'get_running_pid',lambda **k:pid)
+    job={'id':'fixture',**({'execution_id':'fixture-run'} if execution else {})}
+    assert delivery._needs_live_wecom_handoff(job,[{'platform':platform}],adapters) is expected

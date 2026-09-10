@@ -1903,6 +1903,18 @@ def _unresolved_delivery_outcome(job: dict, for_failure: bool) -> Optional[str]:
     return msg
 
 
+def _needs_live_wecom_handoff(job: dict, targets: list, adapters) -> bool:
+    """A second WeCom socket evicts the gateway; reuse its durable send lane."""
+    if adapters is not None or not job.get("execution_id"):
+        return False
+    if not any(str(target.get("platform", "")).lower() == "wecom" for target in targets):
+        return False
+    from gateway.status import get_running_pid
+
+    gateway_pid = get_running_pid(cleanup_stale=False)
+    return gateway_pid is not None and gateway_pid != os.getpid()
+
+
 def _deliver_result(
     job: dict, content: str, adapters=None, loop=None, *, for_failure: bool = False
 ) -> Optional[str]:
@@ -1923,15 +1935,20 @@ def _deliver_result(
     # job's own attempt: a worker's script may dispatch another job in-process (`hermes cron run`),
     # and that nested delivery must not be keyed under the outer execution id.
     external_execution = os.environ.get("_HERMES_CRON_EXTERNAL_WORKER", "")
-    if (external_execution and adapters is None
-            and external_execution == str(job.get("execution_id") or "")
-            and any(target["platform"] != BOT_CHAT_PLATFORM for target in targets)):
+    external_handoff = (
+        external_execution
+        and adapters is None
+        and external_execution == str(job.get("execution_id") or "")
+        and any(target["platform"] != BOT_CHAT_PLATFORM for target in targets)
+    )
+    if external_handoff or _needs_live_wecom_handoff(job, targets, adapters):
         from cron.delivery_queue import enqueue_and_wait
 
         _record_delivery_verification(job, [])
-        error = enqueue_and_wait(external_execution, job, content, for_failure=for_failure)
+        execution_id = external_execution if external_handoff else str(job["execution_id"])
+        error = enqueue_and_wait(execution_id, job, content, for_failure=for_failure)
         from cron.delivery_queue import get_status
-        delivery_status = get_status(external_execution)
+        delivery_status = get_status(execution_id)
         if delivery_status and delivery_status["status"] == "suppressed":
             job["_notification_all_targets_suppressed"] = True
         from cron.jobs import get_job
