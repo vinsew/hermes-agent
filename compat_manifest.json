@@ -5260,12 +5260,6 @@
   },
   {
    "facade": "hermes_cli.web_server",
-   "name": "STORAGE_HONCHO_HOST_BLOCK",
-   "kind": "moved-lazy",
-   "target": "plugins.memory.config_schema"
-  },
-  {
-   "facade": "hermes_cli.web_server",
    "name": "SessionImport",
    "kind": "moved-lazy",
    "target": "hermes_cli.web_models"
@@ -7909,78 +7903,6 @@
    "name": "save_url_image",
    "kind": "moved-lazy",
    "target": "agent.image_gen_provider"
-  },
-  {
-   "facade": "plugins.memory.honcho",
-   "name": "CONCLUDE_SCHEMA",
-   "kind": "restored-def",
-   "target": "(deleted; BASE body restored)"
-  },
-  {
-   "facade": "plugins.memory.honcho",
-   "name": "CONTEXT_SCHEMA",
-   "kind": "restored-def",
-   "target": "(deleted; BASE body restored)"
-  },
-  {
-   "facade": "plugins.memory.honcho",
-   "name": "PROFILE_SCHEMA",
-   "kind": "restored-def",
-   "target": "(deleted; BASE body restored)"
-  },
-  {
-   "facade": "plugins.memory.honcho",
-   "name": "REASONING_SCHEMA",
-   "kind": "restored-def",
-   "target": "(deleted; BASE body restored)"
-  },
-  {
-   "facade": "plugins.memory.honcho",
-   "name": "SEARCH_SCHEMA",
-   "kind": "restored-def",
-   "target": "(deleted; BASE body restored)"
-  },
-  {
-   "facade": "plugins.memory.honcho",
-   "name": "TRIVIAL_PROMPT_RE",
-   "kind": "moved-lazy",
-   "target": "agent.memory_provider"
-  },
-  {
-   "facade": "plugins.memory.honcho.client",
-   "name": "SingletonSlot",
-   "kind": "moved-lazy",
-   "target": "plugins.plugin_utils"
-  },
-  {
-   "facade": "plugins.memory.honcho.oauth",
-   "name": "Callable",
-   "kind": "import",
-   "target": "typing"
-  },
-  {
-   "facade": "plugins.memory.honcho.session",
-   "name": "Callable",
-   "kind": "import",
-   "target": "typing"
-  },
-  {
-   "facade": "plugins.memory.honcho.session",
-   "name": "Path",
-   "kind": "import",
-   "target": "pathlib"
-  },
-  {
-   "facade": "plugins.memory.honcho.session",
-   "name": "hashlib",
-   "kind": "import",
-   "target": "hashlib"
-  },
-  {
-   "facade": "plugins.memory.honcho.session",
-   "name": "re",
-   "kind": "import",
-   "target": "re"
   },
   {
    "facade": "plugins.memory.mem0",
