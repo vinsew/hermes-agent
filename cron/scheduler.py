@@ -2393,7 +2393,7 @@ def _resolve_cron_agent_setup(job: dict, job_id: str, job_name: str, jc) -> _Cro
     setup.fallback_notice = setup.runtime.pop("_fallback_notice", None)
     setup.reasoning_config = _resolve_job_reasoning_config(
         job, _cfg if isinstance(_cfg, dict) else {}, str(setup.model),
-        str(primary_provider_for_drift or ""),
+        str(setup.runtime.get("provider") or setup.runtime.get("requested_provider") or ""),
     )
     # Mid-run provider ladder: same rule as resolution above, so a pinned job cannot be swapped
     # onto the global chain by a 5xx/429 either.
