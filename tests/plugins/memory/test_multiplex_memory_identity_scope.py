@@ -2,7 +2,7 @@
 
 Under ``gateway.multiplex_profiles`` ``os.environ`` is the DEFAULT profile's ``.env``. When a secondary
 profile's scope does not define MEM0_USER_ID / SUPERMEMORY_CONTAINER_TAG / RETAINDB_PROJECT /
-OPENVIKING_* / HERMES_HONCHO_HOST, the provider must fall back to its own default
+OPENVIKING_*, the provider must fall back to its own default
 (per-profile partition), NOT write the secondary's memories into the default profile's account.
 """
 from __future__ import annotations
@@ -18,7 +18,6 @@ _DEFAULT_ENV = {
     "RETAINDB_PROJECT": "proj-default", "RETAINDB_BASE_URL": "https://rdb.default",
     "OPENVIKING_API_KEY": "ov-default", "OPENVIKING_ACCOUNT": "acct-default", "OPENVIKING_USER": "user-default",
     "OPENVIKING_AGENT": "agent-default", "OPENVIKING_ENDPOINT": "http://ov.default",
-    "HERMES_HONCHO_HOST": "host-default", "HONCHO_BASE_URL": "https://honcho.default",
     "OPENAI_API_KEY": "sk-default", "OPENAI_BASE_URL": "https://openai.default/v1",
 }
 
@@ -36,7 +35,7 @@ def secondary_profile(monkeypatch, tmp_path):
     monkeypatch.setenv("HERMES_HOME", str(prof_b))
     secret_scope.set_multiplex_active(True)
     token = secret_scope.set_secret_scope({"RETAINDB_API_KEY": "rdb-b", "SUPERMEMORY_API_KEY": "sm-b",
-                                           "HONCHO_API_KEY": "honcho-b", "MEM0_API_KEY": "mem0-b"})
+                                           "MEM0_API_KEY": "mem0-b"})
     try:
         yield prof_b
     finally:
@@ -49,7 +48,6 @@ def test_secondary_profile_memory_identity_never_inherits_default_environ(second
     import plugins.memory.openviking as openviking
     import plugins.memory.retaindb as retaindb
     import plugins.memory.supermemory as supermemory
-    from plugins.memory.honcho import client as honcho_client
 
     cfg = mem0._load_config()
     assert "user_id" not in cfg  # falls back to the gateway-native id, not the default's user
@@ -68,9 +66,6 @@ def test_secondary_profile_memory_identity_never_inherits_default_environ(second
     assert "default" not in settings["endpoint"]
     client = openviking._VikingClient("http://x", "k")
     assert (client._account, client._user) == ("default", "default")  # the built-in tenant, not acct-default
-
-    assert honcho_client.resolve_active_host() != "host-default"
-    assert honcho_client._env_base_url() is None
 
 
 def test_mem0_oss_llm_never_borrows_default_profile_openai_key(secondary_profile):
