@@ -7,13 +7,38 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from pathlib import Path
+
 from agent import codex_runtime, runtime_cwd
+from agent.memory_provider import MemoryProvider
 from agent.transports import codex_app_server_session
 from hermes_state import SessionDB
-from plugins.memory.honcho import HonchoMemoryProvider
-from plugins.memory.honcho.client import HonchoClientConfig
 from run_agent import AIAgent
 from tools import terminal_tool
+
+
+class _StubMemoryProvider(MemoryProvider):
+    """Neutral memory provider: records the session key + init kwargs at activation so a
+    workspace move can be proven NOT to rebind memory. (Honcho, the original fixture, is
+    retired in this installation.)"""
+
+    def __init__(self):
+        self._session_key = ""
+        self._lazy_init_kwargs: dict | None = None
+
+    @property
+    def name(self) -> str:
+        return "stub"
+
+    def is_available(self) -> bool:
+        return True
+
+    def initialize(self, session_id: str, **kwargs) -> None:
+        self._lazy_init_kwargs = dict(kwargs)
+        self._session_key = Path(str(kwargs.get("cwd") or "")).name or session_id
+
+    def get_tool_schemas(self):
+        return []
 
 
 @pytest.fixture
@@ -37,17 +62,11 @@ def workspace_runtime(monkeypatch, tmp_path):
     monkeypatch.setattr("model_tools.get_tool_definitions", lambda *a, **k: [])
     monkeypatch.setattr("model_tools.check_toolset_requirements", lambda *a, **k: {})
     monkeypatch.setattr("agent.process_bootstrap.OpenAI", MagicMock())
-    monkeypatch.setattr("hermes_cli.config.load_config_readonly", lambda: {"memory": {"provider": "honcho"}})
-    # Real Honcho initialization/routing, but tools-only lazy mode never creates peers.
-    config = HonchoClientConfig(
-        enabled=True, api_key="test-key", session_strategy="per-directory",
-        recall_mode="tools", init_on_session_start=False,
-    )
-    monkeypatch.setattr(HonchoClientConfig, "from_global_config", lambda *a, **k: config)
+    monkeypatch.setattr("hermes_cli.config.load_config_readonly", lambda: {"memory": {"provider": "stub"}})
     providers, agents, starts, network_attempts = [], [], [], []
 
     def load_provider(*a, **k):
-        provider = HonchoMemoryProvider()
+        provider = _StubMemoryProvider()
         providers.append(provider)
         return provider
 
