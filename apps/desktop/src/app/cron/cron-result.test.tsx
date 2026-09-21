@@ -24,7 +24,7 @@ describe('script-only cron result', () => {
       no_agent: true, script: 'backup.py', last_run_at: '2026-09-10T07:23:27Z',
       last_status: status } as CronJob
 
-    render(<CronJobDetail busy={false} c={en.cron} job={job} onPauseResume={() => {}} onTrigger={() => {}} />)
+    render(<CronJobDetail busy={false} c={en.cron} job={job} onEdit={() => {}} onPauseResume={() => {}} onTrigger={() => {}} />)
     await screen.findByText('No linked conversations')
     expect(screen.getByText('Last run result')).toBeTruthy()
     expect(screen.getAllByText(label).length).toBeGreaterThan(0)
