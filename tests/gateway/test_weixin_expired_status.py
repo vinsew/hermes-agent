@@ -7,6 +7,7 @@ import pytest
 
 from gateway.config import PlatformConfig
 from gateway.platforms import weixin
+from gateway.status import flush_runtime_status
 
 
 @pytest.mark.parametrize('field', ['ret', 'errcode'])
@@ -19,6 +20,7 @@ def test_expired_receive_credentials_publish_fatal(tmp_path, monkeypatch, field)
     adapter.set_fatal_error_handler(handler)
     monkeypatch.setattr(weixin, '_get_updates', AsyncMock(return_value={field: -14}))
     asyncio.run(asyncio.wait_for(adapter._poll_loop(), timeout=2))
+    flush_runtime_status()  # v2026.9.24 publishes through the async writer; settle before reading
     status = json.loads((tmp_path / 'gateway_state.json').read_text())['platforms']['weixin']
     assert status['state'] == 'fatal'
     assert status['error_code'] == 'weixin_session_expired'
@@ -36,6 +38,7 @@ def test_ambiguous_stale_session_recovers_without_fatal(tmp_path, monkeypatch):
     responses = iter([{'ret': -2, 'errmsg': 'unknown error'}, {}])
 
     async def get_updates(*args, **kwargs):
+        flush_runtime_status()  # settle the async writer so the read sees the just-published state
         observed.append(json.loads((tmp_path / 'gateway_state.json').read_text())['platforms']['weixin']['state'])
         try:
             return next(responses)
