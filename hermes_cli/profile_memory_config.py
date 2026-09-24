@@ -4,7 +4,7 @@
 provider keeps its settings outside config.yaml, so the clone booted with the provider
 selected and silently unavailable. Providers store per-home config by convention (the same
 convention ``hermes_cli.web_routers.memory_providers`` reads): a ``<home>/<provider>/``
-directory (hindsight) or a flat ``<home>/<provider>.json`` (mem0, honcho, supermemory). Copying
+directory (hindsight) or a flat ``<home>/<provider>.json`` (mem0, supermemory). Copying
 by convention keeps this free of plugin imports: the provider may live in the catalog, not in
 tree, so a hook the plugin must implement could not fix the reported case.
 """
