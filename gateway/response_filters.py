@@ -69,8 +69,21 @@ def _canonical_silence_candidates(text: Any) -> tuple[str, ...]:
     if not 0 < len(stripped) <= _MARKER_LENGTH_CAP:
         return ()
     depunctuated = _strip_edge_silence_punctuation(stripped)
-    forms = (stripped,) if depunctuated == stripped else (stripped, depunctuated)
-    return tuple(_canonical_silence_candidate(f) for f in forms)
+    forms = [stripped] if depunctuated == stripped else [stripped, depunctuated]
+    candidates = [_canonical_silence_candidate(f) for f in forms]
+    # 2026-10-01 cron misdelivery: the final line came out as one stray tokenizer
+    # character glued *before* the sentinel (\u2026[SILENT]); the exact-match rule
+    # treated it as content and delivered the report. Orphan <=2-character prefixes
+    # are glitch garbage; a meaningful prefix is words, and longer residues keep the
+    # deliver-as-content rule. Mirrors the existing asymmetry that already tolerates
+    # notes *after* the marker.
+    for form in forms:
+        for marker in _BRACKETED_SILENCE_MARKERS:
+            if form.upper().endswith(marker):
+                residue = form[: -len(marker)].strip()
+                if 0 < len(residue) <= 2:
+                    candidates.append(marker)
+    return tuple(candidates)
 
 
 def is_intentional_silence_response(response: Any) -> bool:
