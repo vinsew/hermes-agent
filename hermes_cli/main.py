@@ -3024,6 +3024,13 @@ def _run_oneshot_from_args(args) -> None:
 
     Bypasses cli.py entirely; the transport launcher never returns.
     """
+    if args.oneshot == "-":  # read stdin: one argv string is capped at 128 KiB by the kernel (MAX_ARG_STRLEN)
+        # UTF-8 whatever the locale (cron/systemd often have none), like --query-file; kept verbatim
+        stream = getattr(sys.stdin, "buffer", None)
+        args.oneshot = stream.read().decode("utf-8", errors="replace") if stream is not None else sys.stdin.read()
+        if not args.oneshot.strip():
+            print("hermes -z -: no prompt on stdin", file=sys.stderr)
+            raise SystemExit(2)
     from hermes_cli.gateway_chat_startup import launch_gateway_chat
     sys.exit(launch_gateway_chat(args))
 
