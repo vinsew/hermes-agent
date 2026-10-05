@@ -3080,8 +3080,16 @@ def _run_oneshot_from_args(args) -> None:
     # oneshot exit path takes over, else the flags parse fine but silently do nothing
     # and the turn starts a fresh session (every wire request loses all history).
     _resolve_chat_session_args(args, use_tui=False)
+    prompt = args.oneshot
+    if prompt == "-":  # read stdin: one argv string is capped at 128 KiB by the kernel (MAX_ARG_STRLEN)
+        # UTF-8 whatever the locale (cron/systemd often have none), like --query-file; kept verbatim
+        stream = getattr(sys.stdin, "buffer", None)
+        prompt = stream.read().decode("utf-8", errors="replace") if stream is not None else sys.stdin.read()
+        if not prompt.strip():
+            print("hermes -z -: no prompt on stdin", file=sys.stderr)
+            raise SystemExit(2)
     _run_and_exit_oneshot(
-        args.oneshot,
+        prompt,
         model=getattr(args, "model", None),
         provider=getattr(args, "provider", None),
         toolsets=getattr(args, "toolsets", None),
