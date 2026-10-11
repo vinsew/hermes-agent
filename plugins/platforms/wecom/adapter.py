@@ -348,6 +348,13 @@ class WeComAdapter(WeComStreamMixin, WeComMediaMixin, ChatSendQueueMixin, OwnAcc
             if str((payload.get("body") or {}).get("event_type") or "") == "disconnected_event":
                 logger.warning("[%s] Kicked by server (another WS connection established). Suppressing reconnect to avoid mutual kicking. Check for duplicate gateway instances.", self.name)
                 self._running = False
+        elif not cmd and req_id.startswith(f"{APP_CMD_PING}-"):
+            # The server's answer to our heartbeat (no cmd, our ping's req_id): only a failure is news.
+            where = payload if "errcode" in payload else (body_dict or {})
+            errcode = where.get("errcode")
+            if str(errcode) not in ("0", "None"):
+                logger.warning("[%s] Heartbeat rejected by server: errcode=%s errmsg=%s", self.name, errcode,
+                               where.get("errmsg"))
         elif cmd != APP_CMD_PING:
             logger.info("[%s] Unrouted websocket payload dropped: cmd=%r req_id=%s body_keys=%s", self.name, cmd or "(empty)", req_id or "(none)", list(body_dict.keys()) if body_dict is not None else None)
 
