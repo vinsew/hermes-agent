@@ -1,0 +1,49 @@
+[
+  {
+    "name": "memory-rewind",
+    "repo": "https://github.com/AhmetArif0/hermes-memory-rewind",
+    "sha": "354927184de03cdc4a9e9e48ddb2865c36368b1f",
+    "subdir": "memory-rewind",
+    "requires_hermes": ">=0.21.5",
+    "version": "1.3.2"
+  },
+  {
+    "name": "aux-ledger",
+    "repo": "https://github.com/olric3015/hermes-plugins",
+    "sha": "f13dcf3c73b7169db9bc908f3ebffef9bdf80cc7",
+    "subdir": "aux-ledger",
+    "requires_hermes": ">=0.21.5",
+    "version": "1.3.0"
+  },
+  {
+    "name": "error-ledger",
+    "repo": "https://github.com/olric3015/hermes-plugins",
+    "sha": "dd646070c662ebf1978e5623bf30d2d1f55f7bef",
+    "subdir": "error-ledger",
+    "requires_hermes": ">=0.21.5",
+    "version": "1.3.0"
+  },
+  {
+    "name": "approval-ledger",
+    "repo": "https://github.com/olric3015/hermes-plugins",
+    "sha": "4a2ef866a51f1c99ed1d77e423136450340d901b",
+    "subdir": "approval-ledger",
+    "requires_hermes": ">=0.21.5",
+    "version": "1.2.0"
+  },
+  {
+    "name": "context-audit",
+    "version": "0.1.0",
+    "repo": "https://github.com/ZidoCode/context-audit",
+    "sha": "2aaa96aab2c685798b011a5d6479a4a1fa6a033f",
+    "requires_hermes": ">=0.21.6"
+  },
+  {
+    "name": "redaction-pack",
+    "repo": "https://github.com/pierrenode/hermes-redaction-pack",
+    "sha": "febd8bfe9971a3242d0ca18e8e7ca71d685d503b",
+    "subdir": "redaction-pack",
+    "requires_hermes": ">=0.21",
+    "version": "1.4.0"
+  }
+]

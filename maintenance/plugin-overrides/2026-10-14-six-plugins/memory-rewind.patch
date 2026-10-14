@@ -1,0 +1,151 @@
+--- a/__init__.py
++++ b/__init__.py
+@@ -47,10 +47,15 @@
+         max_kb = int(get("max_file_kb", DEFAULT_MAX_FILE_KB))
+     except (TypeError, ValueError):
+         max_kb = DEFAULT_MAX_FILE_KB
++    try:
++        max_mb = int(get("max_history_mb", 256))
++    except (TypeError, ValueError):
++        max_mb = 256
+     return TrackingOptions(
+         track_skills=bool(get("track_skills", True)),
+         track_soul=bool(get("track_soul", True)),
+         max_file_kb=max(1, max_kb),
++        max_history_mb=max(1, max_mb),
+     )
+ 
+ 
+--- a/chat.py
++++ b/chat.py
+@@ -11,7 +11,7 @@
+ import logging
+ from pathlib import Path
+ 
+-from .cli import format_log
++from .cli import _when
+ from .gitstore import GitError, GitStore, GitUnavailable, UnknownRevision
+ from .restore import ALIASES, RestoreError, normalize_target
+ from .tracking import MEMORY_FILES, SKILLS_ROOT, SOUL_FILE, TrackingOptions
+@@ -30,7 +30,7 @@
+   /{COMMAND}                              the last {RECENT_VERSIONS} versions
+   /{COMMAND} memory | user | soul         versions of MEMORY.md, USER.md or SOUL.md
+   /{COMMAND} skills/<category>/<skill>    versions of one skill
+-  /{COMMAND} <version> [target]           what that version changed
++  /{COMMAND} <version> [target]           changed-file metadata (no content)
+ Restoring is a host command: hermes memory-rewind restore <version> <target>"""
+ 
+ 
+@@ -61,7 +61,7 @@
+             commits = store.log(paths, limit=RECENT_VERSIONS)
+             if not commits:
+                 return "No versions touch that path yet."
+-            return _clip(format_log(commits, FILES_PER_VERSION), "hermes memory-rewind log")
++            return _clip(_metadata_log(commits, FILES_PER_VERSION), "hermes memory-rewind log")
+         rev = store.resolve(args[0])
+         paths = [normalize_target(args[1], home, options)] if len(args) > 1 else []
+         return _version(store, rev, paths)
+@@ -79,23 +79,18 @@
+             or text.split("/")[0] == SKILLS_ROOT)
+ 
+ 
++def _metadata_log(commits, max_files=FILES_PER_VERSION) -> str:
++    lines = []
++    for commit in commits:
++        lines.append(f"{commit.sha[:10]}  {_when(commit.timestamp)}  ({len(commit.changes)} files)")
++        for status, path in commit.changes[:max_files]:
++            lines.append(f"    {status}  {path}")
++    return "\n".join(lines)
++
++
+ def _version(store: GitStore, rev: str, paths: list[str]) -> str:
+-    commit = store.log(limit=1, rev=rev)[0]
+-    short = rev[:10]
+-    only_file = commit.changes[0][1] if len(commit.changes) == 1 else "<target>"
+-    target = paths[0] if paths else only_file
+-    try:
+-        store.resolve(f"{rev}~1")
+-    except UnknownRevision:  # the first version: nothing came before it
+-        hints, full = [], f"hermes memory-rewind show {short} <file>"
+-    else:
+-        full = " ".join(["hermes memory-rewind diff", f"{short}~1", *paths, "--to", short])
+-        hints = [f"State before this version: hermes memory-rewind restore {short}~1 {target}"]
+-    head = "\n".join([format_log([commit], max_files=0), *hints])
+-    patch = store.changes(rev, paths).rstrip("\n")
+-    if not patch.strip():
+-        return f"{head}\n\nThis version did not change {target}."
+-    return f"{head}\n\n" + _clip(patch, full, budget=CHAT_LIMIT - len(head) - 2)
++    commit = store.log(paths, limit=1, rev=rev)[0]
++    return _metadata_log([commit]) + "\n\nContent diffs are available only through the host CLI."
+ 
+ 
+ def _clip(text: str, full_output: str, budget: int = CHAT_LIMIT) -> str:
+--- a/cli.py
++++ b/cli.py
+@@ -58,6 +58,12 @@
+         return 2
+     WORKER.flush(timeout=30)
+     command = args.mrw_command
++    if command in {"restore", "forget"} and not (command == "restore" and args.dry_run):
++        option = "allow_restore" if command == "restore" else "allow_forget"
++        if ctx.get_config(option, False) is not True:
++            print("This operation requires explicit operator authorization; preview with --dry-run first.",
++                  file=sys.stderr)
++            return 1
+     try:
+         if command == "status":
+             return _status(store, home)
+--- a/gitstore.py
++++ b/gitstore.py
+@@ -143,6 +143,8 @@
+         return (self.repo / "HEAD").is_file()
+ 
+     def ensure_repo(self) -> None:
++        self.data_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
++        self.data_dir.chmod(0o700)
+         if self.exists():
+             return
+         self.data_dir.mkdir(parents=True, exist_ok=True)
+--- a/plugin.yaml
++++ b/plugin.yaml
+@@ -32,3 +32,15 @@
+     type: int
+     default: 1024
+     description: Skip files larger than this many KiB.
++  allow_restore:
++    type: bool
++    default: false
++    description: Apply restores only after explicit operator authorization; dry-run stays available.
++  allow_forget:
++    type: bool
++    default: false
++    description: Delete history only after explicit operator authorization.
++  max_history_mb:
++    type: int
++    default: 256
++    description: Pause new snapshots at this budget; never discard existing versions automatically.
+--- a/tracking.py
++++ b/tracking.py
+@@ -47,6 +47,7 @@
+     track_skills: bool = True
+     track_soul: bool = True
+     max_file_kb: int = DEFAULT_MAX_FILE_KB
++    max_history_mb: int = 256
+ 
+     @property
+     def max_file_bytes(self) -> int:
+--- a/worker.py
++++ b/worker.py
+@@ -47,6 +47,12 @@
+                   total_calls: int = 0) -> str | None:
+     """Snapshot synchronously. Returns the new commit id, or None when nothing changed."""
+     files = collect_tracked_files(home, options)
++    budget = options.max_history_mb * 1024 * 1024
++    existing = sum(p.stat().st_size for p in data_dir.rglob("*")
++                   if p.is_file() and not p.is_symlink()) if data_dir.exists() else 0
++    incoming = sum((home / rel).stat().st_size for rel in files)
++    if existing + incoming > budget:
++        raise GitError("history budget reached; new snapshots paused, existing versions preserved")
+     unique = list(OrderedDict.fromkeys(r for r in reasons if r)) or ["snapshot"]
+     subject = "; ".join(unique)[:200]
+     body = build_body(list(calls), total_calls, dict(sessions or {}))

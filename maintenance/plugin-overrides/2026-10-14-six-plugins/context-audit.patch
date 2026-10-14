@@ -1,0 +1,174 @@
+--- a/__init__.py
++++ b/__init__.py
+@@ -56,7 +56,7 @@
+ _state_lock = threading.Lock()
+ # Per-turn scratch: (session_id, turn_id) -> {"started_ts", "hooked"}. Never
+ # persisted, never holds content.
+-_turn_state: dict[tuple[str, str], dict] = {}
++_turn_state: dict[tuple[str, str, str], dict] = {}
+ 
+ _SCHEMA = """
+ CREATE TABLE IF NOT EXISTS turns (
+@@ -143,7 +143,7 @@
+         from hermes_constants import get_hermes_home  # type: ignore
+ 
+         return Path(get_hermes_home())
+-    except Exception:
++    except ImportError:
+         env = os.environ.get("HERMES_HOME")
+         return Path(env) if env else Path.home() / ".hermes"
+ 
+@@ -153,7 +153,11 @@
+ 
+ 
+ #: Overridable so tests (and the selftest) can point at a temp file or ``:memory:``.
+-DB_PATH = _default_db_path()
++DB_PATH: str | None = None
++MAX_ROWS_PER_TABLE = 100_000
++RETENTION_DAYS = 90
++PRUNE_EVERY_WRITES = 256
++PRUNE_INTERVAL_SECONDS = 60.0
+ 
+ 
+ def _payload_bytes(obj) -> int:
+@@ -217,13 +221,20 @@
+ class AuditDB:
+     """SQLite-backed metadata store. One row per turn / tool call / compaction."""
+ 
+-    def __init__(self, path: str = DB_PATH):
++    def __init__(self, path: str | None = None):
++        path = path or _default_db_path()
+         self.path = path
++        self._writes = 0
++        self._last_prune = 0.0
+         self._lock = threading.RLock()
+         self._memory = path == ":memory:"
+         if not self._memory:
+-            Path(path).parent.mkdir(parents=True, exist_ok=True)
+-        self._conn = sqlite3.connect(path, check_same_thread=False)
++            Path(path).parent.mkdir(parents=True, mode=0o700, exist_ok=True)
++            Path(path).parent.chmod(0o700)
++            fd = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
++            os.fchmod(fd, 0o600)
++            os.close(fd)
++        self._conn = sqlite3.connect(path, timeout=0.25, check_same_thread=False)
+         if not self._memory:
+             try:
+                 self._conn.execute("PRAGMA journal_mode=WAL")
+@@ -232,7 +243,22 @@
+         self._conn.execute("PRAGMA synchronous=NORMAL")
+         with self._lock:
+             self._conn.executescript(_SCHEMA)
++            self._prune_if_due()
+             self._conn.commit()
++
++    def _prune_if_due(self) -> None:
++        self._writes += 1
++        now = time.monotonic()
++        if self._writes < PRUNE_EVERY_WRITES and now - self._last_prune < PRUNE_INTERVAL_SECONDS:
++            return
++        cutoff = time.time() - RETENTION_DAYS * 86400
++        for table in ("turns", "tool_calls", "compactions"):
++            self._conn.execute(f"DELETE FROM {table} WHERE ts < ?", (cutoff,))
++            self._conn.execute(
++                f"DELETE FROM {table} WHERE id <= (SELECT id FROM {table} ORDER BY id DESC LIMIT 1 OFFSET ?)",
++                (MAX_ROWS_PER_TABLE,))
++        self._writes = 0
++        self._last_prune = now
+ 
+     # -- writes ----------------------------------------------------------
+ 
+@@ -248,6 +274,7 @@
+                  turn_id or "", tool_name or "", args_bytes,
+                  1 if args_bytes > CONTEXT_EATER_BYTES else 0),
+             )
++            self._prune_if_due()
+             self._conn.commit()
+             return int(cur.lastrowid or 0)
+ 
+@@ -296,12 +323,14 @@
+                     (_now(), tool_call_id or "", session_id or "", tool_name or "",
+                      result_bytes, duration, status or ""),
+                 )
++                self._prune_if_due()
+                 self._conn.commit()
+                 return int(cur.lastrowid or 0)
+             self._conn.execute(
+                 "UPDATE tool_calls SET result_bytes=?, duration_ms=?, status=?, resolved=1 WHERE id=?",
+                 (result_bytes, duration, status or "", row[0]),
+             )
++            self._prune_if_due()
+             self._conn.commit()
+             return int(row[0])
+ 
+@@ -318,6 +347,7 @@
+                  platform or "", int(est_input_tokens or 0), int(est_output_tokens or 0),
+                  largest_tool or "", int(largest_tool_bytes or 0), int(compaction_events or 0)),
+             )
++            self._prune_if_due()
+             self._conn.commit()
+             return int(cur.lastrowid or 0)
+ 
+@@ -328,6 +358,7 @@
+                 "INSERT INTO compactions (ts, session_id, aux_task, model) VALUES (?,?,?,?)",
+                 (ts if ts is not None else _now(), session_id or "", aux_task or "", model or ""),
+             )
++            self._prune_if_due()
+             self._conn.commit()
+             return int(cur.lastrowid or 0)
+ 
+@@ -428,21 +459,23 @@
+             pass
+ 
+ 
+-_DB: AuditDB | None = None
++_DB: AuditDB | None = None  # Explicit test override only.
++_DATABASES: dict[str, AuditDB] = {}
++_DATABASE_LOCK = threading.Lock()
+ 
+ 
+ def get_db() -> AuditDB:
+-    """Lazy singleton; recreated when the effective DB path changes.
+-
+-    The path is resolved lazily at call time so a ``HERMES_HOME`` change after
+-    import (tests, profile switch) is picked up instead of freezing the path
+-    computed at module import.
+-    """
++    """Resolve the owning profile on every call without replacing an in-use connection."""
+     global _DB
+-    path = DB_PATH if DB_PATH != _default_db_path() else _default_db_path()
+-    if _DB is None or _DB.path != path:
+-        _DB = AuditDB(path)
+-    return _DB
++    path = DB_PATH if DB_PATH is not None else _default_db_path()
++    with _DATABASE_LOCK:
++        if DB_PATH is not None:
++            if _DB is None or _DB.path != path:
++                _DB = AuditDB(path)
++            return _DB
++        if path not in _DATABASES:
++            _DATABASES[path] = AuditDB(path)
++        return _DATABASES[path]
+ 
+ 
+ # ---------------------------------------------------------------------------
+@@ -562,8 +595,8 @@
+ # hooks — all observer-only, all fail-open
+ # ---------------------------------------------------------------------------
+ 
+-def _turn_key(session_id: str, turn_id: str) -> tuple[str, str]:
+-    return (session_id or "", turn_id or "")
++def _turn_key(session_id: str, turn_id: str) -> tuple[str, str, str]:
++    return (str(_hermes_home()), session_id or "", turn_id or "")
+ 
+ 
+ def _note_turn_start(session_id: str, turn_id: str) -> float:
+@@ -596,7 +629,7 @@
+                       tool_call_id: str = "", turn_id: str = "", duration_ms=None,
+                       status: str = "", **kwargs) -> None:
+     """Attach the result *size* (never its content) to the existing row."""
+-    size = len(result) if isinstance(result, str) else _payload_bytes(result)
++    size = _payload_bytes(result)
+     get_db().confirm_tool_call(tool_name, session_id=session_id, tool_call_id=tool_call_id,
+                                result_bytes=size, duration_ms=duration_ms, status=status,
+                                turn_id=turn_id)

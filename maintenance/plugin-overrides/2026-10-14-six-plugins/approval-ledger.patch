@@ -1,0 +1,128 @@
+--- a/__init__.py
++++ b/__init__.py
+@@ -74,7 +74,7 @@
+         logger.debug("approval-ledger: could not record approval decision: %s", exc)
+ 
+ 
+-def _handle_approval_log(raw_args: str = "") -> Optional[str]:
++def _handle_approval_log(raw_args: str = "", *, allow_clear: bool = False) -> Optional[str]:
+     words = (raw_args or "").lower().split()
+     known = {"session", "all", "day", "clear", "recent", *_GROUP_WORDS}
+     spans = [w for w in words if ledger.parse_span(w)]
+@@ -85,6 +85,8 @@
+         return _HELP if unknown[0] in {"help", "-h", "--help"} else f"Unknown option: {unknown[0]}\n\n{_HELP}"
+     path = _ledger_path()
+     if "clear" in words:
++        if not allow_clear:
++            return "History clearing requires explicit operator authorization; chat access is read-only."
+         return f"approval-ledger: deleted {ledger.clear(path)} recorded decision(s)."
+     window = "session" if "session" in words else "all" if "all" in words else "day"
+     title, span = _TITLES[window], ledger.DAY_SECONDS
+@@ -102,6 +104,6 @@
+ def register(ctx) -> None:
+     ctx.register_hook("pre_approval_request", _on_pre_approval_request)
+     ctx.register_hook("post_approval_response", _on_post_approval_response)
+-    ctx.register_command("approval-log", handler=_handle_approval_log,
++    ctx.register_command("approval-log", handler=lambda raw_args="": _handle_approval_log(raw_args, allow_clear=ctx.get_config("allow_clear", False) is True),
+                          args_hint="[session|all|7d] [surfaces|days|recent [N]] | clear",
+                          description="Show which approval prompts Hermes raised, how they ended and how long you took.")
+--- a/ledger.py
++++ b/ledger.py
+@@ -12,6 +12,7 @@
+ import tempfile
+ import threading
+ import time
++from contextlib import contextmanager
+ from pathlib import Path
+ from typing import Any, Dict, Iterable, List, Optional
+ 
+@@ -66,12 +67,50 @@
+     }
+ 
+ 
++@contextmanager
++def _file_lock(path: Path):
++    path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
++    path.parent.chmod(0o700)
++    lock_path = path.with_name(path.name + ".lock")
++    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
++    os.fchmod(fd, 0o600)
++    deadline = time.monotonic() + 0.5
++    try:
++        while True:
++            try:
++                if os.name == "nt":
++                    import msvcrt
++                    os.lseek(fd, 0, os.SEEK_SET)
++                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
++                else:
++                    import fcntl
++                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
++                break
++            except OSError as exc:
++                import errno
++                if exc.errno not in (errno.EACCES, errno.EAGAIN):
++                    raise
++                if time.monotonic() >= deadline:
++                    raise TimeoutError("ledger busy; observer skipped this event") from exc
++                time.sleep(0.005)
++        yield
++    finally:
++        # Closing the dedicated descriptor releases either platform's lock.
++        os.close(fd)
++
++
+ def _trim(path: Path) -> None:
+-    lines = path.read_text(encoding="utf-8-sig").splitlines()[-KEEP_LINES:]
+-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".approvals-", suffix=".tmp")
+-    try:
+-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+-            fh.write("\n".join(lines) + "\n")
++    # Leave byte headroom as well as a row bound; long metadata must not retrim every call.
++    kept, size = [], 0
++    for line in reversed(path.read_bytes().splitlines(keepends=True)[-KEEP_LINES:]):
++        if size + len(line) > MAX_BYTES * 3 // 4:
++            break
++        kept.append(line)
++        size += len(line)
++    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".ledger-", suffix=".tmp")
++    try:
++        with os.fdopen(fd, "wb") as fh:
++            fh.write(b"".join(reversed(kept)))
+         os.replace(tmp, path)
+     except BaseException:
+         Path(tmp).unlink(missing_ok=True)
+@@ -81,8 +120,10 @@
+ def append(path: Path, row: Dict[str, Any]) -> None:
+     """Append ``row``; once the file passes ``MAX_BYTES`` keep its newest ``KEEP_LINES`` rows."""
+     line = json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n"
+-    with _lock:
+-        with open(path, "a", encoding="utf-8", newline="\n") as fh:
++    with _lock, _file_lock(path):
++        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
++        os.fchmod(fd, 0o600)
++        with os.fdopen(fd, "a", encoding="utf-8", newline="\n") as fh:
+             fh.write(line)
+         if path.stat().st_size > MAX_BYTES:
+             _trim(path)
+@@ -107,7 +148,7 @@
+ 
+ def clear(path: Path) -> int:
+     """Delete the ledger; returns how many rows it held."""
+-    with _lock:
++    with _lock, _file_lock(path):
+         count = len(read(path))
+         path.unlink(missing_ok=True)
+     return count
+--- a/plugin.yaml
++++ b/plugin.yaml
+@@ -6,3 +6,9 @@
+ provides_hooks:
+   - pre_approval_request
+   - post_approval_response
++
++config_schema:
++  allow_clear:
++    type: boolean
++    default: false
++    description: "Operator-only temporary authorization to clear ledger history."
