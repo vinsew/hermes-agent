@@ -239,8 +239,8 @@ def test_same_gateway_recovers_terminalization_failure_without_resending(
 def test_direct_wecom_delivery_uses_existing_gateway_without_new_socket(monkeypatch):
     import cron.scheduler_delivery as delivery
     import cron.delivery_queue as queue
-    import gateway.status as status
-    import gateway.config as config
+    from gateway import status
+    from gateway import config
     job={'id':'job-wecom','execution_id':'direct-wecom','deliver':'wecom'}
     monkeypatch.delenv('_HERMES_CRON_EXTERNAL_WORKER',raising=False)
     monkeypatch.setattr(delivery,'_resolve_delivery_targets',lambda *a,**k:[{'platform':'wecom','chat_id':'owner'}])
@@ -264,7 +264,7 @@ def test_direct_wecom_delivery_uses_existing_gateway_without_new_socket(monkeypa
 ])
 def test_live_wecom_handoff_scope(monkeypatch,platform,execution,adapters,pid_kind,expected):
     import cron.scheduler_delivery as delivery
-    import gateway.status as status
+    from gateway import status
     pid={'other':delivery.os.getpid()+1,'self':delivery.os.getpid(),'absent':None}[pid_kind]
     monkeypatch.setattr(status,'get_running_pid',lambda **k:pid)
     job={'id':'fixture',**({'execution_id':'fixture-run'} if execution else {})}
