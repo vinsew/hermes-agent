@@ -16,6 +16,7 @@ bot token afterwards, and without this an adapter-less profile would stay adapte
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 from pathlib import Path
@@ -35,12 +36,13 @@ _OWN_GATEWAY_PROBE_TIMEOUT_SECS = 5.0
 
 
 def profile_serve_signature(home: Path) -> tuple:
-    """Cheap change detector for a served profile's credentials/config: file signature per file."""
+    """Detect content edits even when a writer preserves every observed stat field."""
     sig = []
     for name in _PROFILE_SIGNATURE_FILES:
         try:
-            st = os.stat(Path(home) / name)
-            sig.append(file_signature(st))
+            path = Path(home) / name
+            st = os.stat(path)
+            sig.append((file_signature(st), hashlib.sha256(path.read_bytes()).digest()))
         except OSError:
             sig.append(None)
     return tuple(sig)
