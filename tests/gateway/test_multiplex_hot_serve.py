@@ -114,6 +114,23 @@ def _served_record(home):
 
 
 @pytest.mark.asyncio
+async def test_same_stat_credential_edit_rescans_only_changed_profile(tmp_path, monkeypatch):
+    monkeypatch.setattr("gateway.run_profile_reconcile.file_signature", lambda _st: (1, 64, 1, 1))
+    runner, home = _runner(tmp_path, monkeypatch)
+    alpha = _mkprofile(home, "alpha", "DISCORD_BOT_TOKEN=alpha-token\n")
+    _mkprofile(home, "beta", "DISCORD_BOT_TOKEN=other-token\n")
+    with patch("hermes_cli.profiles.get_active_profile_name", return_value="default"):
+        await runner._start_secondary_profile_adapters()
+        beta_adapter = runner._profile_adapters["beta"][Platform.DISCORD]
+        (alpha / ".env").write_text("DISCORD_BOT_TOKEN=fresh-token\n", encoding="utf-8")
+        result = await runner.reconcile_served_profiles(reason="watcher")
+        assert result["rescanned"] == ["alpha"]
+        assert runner._profile_adapters["alpha"][Platform.DISCORD].token == "DISCORD_BOT_TOKEN=fresh-token\n"
+        assert runner._profile_adapters["beta"][Platform.DISCORD] is beta_adapter
+        assert (await runner.reconcile_served_profiles())["rescanned"] == []
+
+
+@pytest.mark.asyncio
 async def test_opt_out_rescans_and_opt_in_waits_for_own_gateway_to_stop(tmp_path, monkeypatch, caplog):
     runner, home = _runner(tmp_path, monkeypatch)
     solo = _mkprofile(home, "solo", "DISCORD_BOT_TOKEN=solo-token\n")

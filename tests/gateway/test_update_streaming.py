@@ -360,6 +360,9 @@ class TestCmdUpdateGatewayMode:
         git("remote", "add", "origin", str(root))
         (root / "notes.txt").write_text("user edit\n", encoding="utf-8")
         monkeypatch.setattr(main, "PROJECT_ROOT", root)
+        # Installation discovery has its own tests; this fixture owns only this checkout.
+        retarget = MagicMock()
+        monkeypatch.setattr("hermes_cli.update_owning_install.retarget_to_owning_install", retarget)
         # Isolate host/service phases; options, Git, stash and prompt dispatch stay real.
         monkeypatch.setattr(main, "_update_preflight_handled", lambda args: False)
         monkeypatch.setattr(main, "_install_hangup_protection", lambda **kw: None)
@@ -375,6 +378,7 @@ class TestCmdUpdateGatewayMode:
 
         main.cmd_update(SimpleNamespace(gateway=True, branch="main", channel="main", yes=False))
 
+        retarget.assert_called_once_with(root)
         gateway_prompt.assert_called_once()
         assert "Restore" in gateway_prompt.call_args.args[0]
         assert (root / "notes.txt").read_text(encoding="utf-8") == "committed\n"
