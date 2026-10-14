@@ -3,6 +3,8 @@ that keeps mtime and size (``cp -p``, ``rsync -t``, a timestamp-pinning writer).
 import os
 import shutil
 
+import pytest
+
 from gateway.run_profile_reconcile import profile_serve_signature
 from tests.waiting import wait_for_ctime_tick
 
@@ -43,4 +45,17 @@ def test_profile_serve_signature_follows_the_config_backend_version(tmp_path, mo
     assert profile_serve_signature(tmp_path) == before
     backend.version_now = ("etag-2",)
     assert not (tmp_path / "config.yaml").exists()
+
+
+@pytest.mark.parametrize("name", ["config.yaml", ".env"])
+def test_profile_signature_detects_content_when_all_stat_fields_match(tmp_path, monkeypatch, name):
+    import utils
+
+    # Freeze the stat signature every layer sees; only a content digest can tell these apart.
+    monkeypatch.setattr(utils, "file_signature", lambda _st: (1, 64, 1, 1))
+    path = tmp_path / name
+    path.write_text("a" * 64, encoding="utf-8")
+    before = profile_serve_signature(tmp_path)
+    assert profile_serve_signature(tmp_path) == before
+    path.write_text("b" * 64, encoding="utf-8")
     assert profile_serve_signature(tmp_path) != before
