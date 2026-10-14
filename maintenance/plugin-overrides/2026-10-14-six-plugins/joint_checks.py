@@ -37,6 +37,33 @@ try:
  assert dummy not in redact.redact_sensitive_text(dummy,force=True)
  baseline='sk-proj-'+'A'*80
  assert baseline not in redact.redact_sensitive_text(baseline,force=True)
+ from re import _parser, _constants as RC
+ import re
+ def sample(nodes):
+  out=''
+  for op,arg in nodes:
+   if op is RC.LITERAL:out+=chr(arg)
+   elif op is RC.IN:
+    typ,val=arg[0]
+    if typ is RC.LITERAL:out+=chr(val)
+    elif typ is RC.RANGE:out+=chr(val[0])
+    elif typ is RC.CATEGORY:out+='0' if val is RC.CATEGORY_DIGIT else 'a'
+    else:raise AssertionError(('unsupported class',arg))
+   elif op in (RC.MAX_REPEAT,RC.MIN_REPEAT,RC.POSSESSIVE_REPEAT):out+=sample(arg[2])*arg[0]
+   elif op is RC.SUBPATTERN:out+=sample(arg[3])
+   elif op is RC.BRANCH:out+=sample(arg[1][0])
+   elif op is RC.AT:pass
+   elif op is RC.CATEGORY:out+='0' if arg is RC.CATEGORY_DIGIT else 'a'
+   elif op is RC.ANY:out+='a'
+   else:raise AssertionError(('unsupported token',op,arg))
+  return out
+ fmt_spec=importlib.util.spec_from_file_location('audit_pack_formats',ROOT/'staged/redaction-pack/patterns.py')
+ fmt_mod=importlib.util.module_from_spec(fmt_spec);fmt_spec.loader.exec_module(fmt_mod)
+ for fmt in fmt_mod.FORMATS:
+  value=sample(_parser.parse(fmt.pattern,0))
+  assert re.fullmatch(fmt.pattern,value),(fmt.vendor,'fixture not matching')
+  assert value not in redact.redact_sensitive_text('fixture '+value+' end',force=True),(fmt.vendor,'unmasked')
+ print('PASS all',len(fmt_mod.FORMATS),'vendor-format synthetic samples masked through actual core redactor')
  ordinary='验收：普通产品文案，没有凭证。'*10000
  start=time.perf_counter(); assert redact.redact_sensitive_text(ordinary,force=True)==ordinary
  print('PASS 71 patterns admitted, dummy credential and builtin credential masked; ordinary text preserved',round(time.perf_counter()-start,4))

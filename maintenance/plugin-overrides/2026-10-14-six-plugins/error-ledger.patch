@@ -1,6 +1,17 @@
 --- a/__init__.py
 +++ b/__init__.py
-@@ -53,7 +53,7 @@
+@@ -42,7 +42,9 @@
+     # Resolved per call: plugin_data_dir follows the active profile.
+     from plugins.plugin_storage import plugin_data_dir
+ 
+-    return plugin_data_dir(PLUGIN_NAME) / ledger.FILENAME
++    data = plugin_data_dir(PLUGIN_NAME)
++    data.chmod(0o700)
++    return data / ledger.FILENAME
+ 
+ 
+ def _on_api_request_error(**payload: Any) -> None:
+@@ -53,7 +55,7 @@
          logger.debug("error-ledger: could not record provider error: %s", exc)
  
  
@@ -9,7 +20,7 @@
      words = (raw_args or "").lower().split()
      known = {"session", "all", "day", "clear", "recent", *_GROUP_WORDS}
      spans = [w for w in words if ledger.parse_span(w)]
-@@ -64,6 +64,8 @@
+@@ -64,6 +66,8 @@
          return _HELP if unknown[0] in {"help", "-h", "--help"} else f"Unknown option: {unknown[0]}\n\n{_HELP}"
      path = _ledger_path()
      if "clear" in words:
@@ -18,7 +29,7 @@
          return f"error-ledger: deleted {ledger.clear(path)} recorded error(s)."
      window = "session" if "session" in words else "all" if "all" in words else "day"
      title, span = _TITLES[window], ledger.DAY_SECONDS
-@@ -80,6 +82,6 @@
+@@ -80,6 +84,6 @@
  
  def register(ctx) -> None:
      ctx.register_hook("api_request_error", _on_api_request_error)

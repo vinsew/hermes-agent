@@ -1,6 +1,17 @@
 --- a/__init__.py
 +++ b/__init__.py
-@@ -74,7 +74,7 @@
+@@ -47,7 +47,9 @@
+     # Resolved per call: plugin_data_dir follows the active profile.
+     from plugins.plugin_storage import plugin_data_dir
+ 
+-    return plugin_data_dir(PLUGIN_NAME) / ledger.FILENAME
++    data = plugin_data_dir(PLUGIN_NAME)
++    data.chmod(0o700)
++    return data / ledger.FILENAME
+ 
+ 
+ def _prompt_key(payload: dict) -> tuple:
+@@ -74,7 +76,7 @@
          logger.debug("approval-ledger: could not record approval decision: %s", exc)
  
  
@@ -9,7 +20,7 @@
      words = (raw_args or "").lower().split()
      known = {"session", "all", "day", "clear", "recent", *_GROUP_WORDS}
      spans = [w for w in words if ledger.parse_span(w)]
-@@ -85,6 +85,8 @@
+@@ -85,6 +87,8 @@
          return _HELP if unknown[0] in {"help", "-h", "--help"} else f"Unknown option: {unknown[0]}\n\n{_HELP}"
      path = _ledger_path()
      if "clear" in words:
@@ -18,7 +29,7 @@
          return f"approval-ledger: deleted {ledger.clear(path)} recorded decision(s)."
      window = "session" if "session" in words else "all" if "all" in words else "day"
      title, span = _TITLES[window], ledger.DAY_SECONDS
-@@ -102,6 +104,6 @@
+@@ -102,6 +106,6 @@
  def register(ctx) -> None:
      ctx.register_hook("pre_approval_request", _on_pre_approval_request)
      ctx.register_hook("post_approval_response", _on_post_approval_response)

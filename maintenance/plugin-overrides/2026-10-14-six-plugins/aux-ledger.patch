@@ -1,6 +1,17 @@
 --- a/__init__.py
 +++ b/__init__.py
-@@ -51,7 +51,7 @@
+@@ -40,7 +40,9 @@
+     # Resolved per call: plugin_data_dir follows the active profile.
+     from plugins.plugin_storage import plugin_data_dir
+ 
+-    return plugin_data_dir(PLUGIN_NAME) / ledger.FILENAME
++    data = plugin_data_dir(PLUGIN_NAME)
++    data.chmod(0o700)
++    return data / ledger.FILENAME
+ 
+ 
+ def _on_post_auxiliary_call(**payload: Any) -> None:
+@@ -51,7 +53,7 @@
          logger.debug("aux-ledger: could not record auxiliary call: %s", exc)
  
  
@@ -9,7 +20,7 @@
      words = (raw_args or "").lower().split()
      known = {"session", "all", "clear", "day", "recent", *_GROUP_WORDS}
      spans = [w for w in words if ledger.parse_span(w)]
-@@ -60,6 +60,8 @@
+@@ -60,6 +62,8 @@
          return _HELP if unknown[0] in {"help", "-h", "--help"} else f"Unknown option: {unknown[0]}\n\n{_HELP}"
      path = _ledger_path()
      if "clear" in words:
@@ -18,7 +29,7 @@
          return f"aux-ledger: deleted {ledger.clear(path)} recorded call(s)."
      window = "session" if "session" in words else "all" if "all" in words else "day"
      title, span = _TITLES[window], ledger.DAY_SECONDS
-@@ -75,6 +77,6 @@
+@@ -75,6 +79,6 @@
  
  def register(ctx) -> None:
      ctx.register_hook("post_auxiliary_call", _on_post_auxiliary_call)

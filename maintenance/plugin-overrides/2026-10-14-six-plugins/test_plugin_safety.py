@@ -191,3 +191,15 @@ def test_chat_clear_default_denied_preserves_rows(tmp_path, monkeypatch, name, h
     assert path.read_bytes()==before
     m.ledger.append(path, {'model':'next','ts':time.time()})
     assert len(m.ledger.read(path))==2
+
+
+@pytest.mark.parametrize('name,handler', [('aux-ledger','_handle_aux'),('error-ledger','_handle_errors'),('approval-ledger','_handle_approval_log')])
+def test_empty_ledger_command_keeps_profile_state_private(tmp_path, name, handler):
+    from hermes_constants import set_hermes_home_override, reset_hermes_home_override
+    token=set_hermes_home_override(tmp_path)
+    try:
+        m=load_plugin(name)
+        assert isinstance(getattr(m,handler)(''),str)
+        assert stat.S_IMODE((tmp_path/'plugin-data'/name).stat().st_mode)&0o077==0
+    finally:
+        reset_hermes_home_override(token)
