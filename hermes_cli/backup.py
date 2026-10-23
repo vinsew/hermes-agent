@@ -525,6 +525,14 @@ def _write_zip_entries(
                 _write_zip_file(zf, abs_path, str(rel_path))
                 if track_bytes:
                     total_bytes += abs_path.stat().st_size
+        except FileNotFoundError as exc:
+            # Deleted after the scan (cron output retention, a rotated log): the archive matches the
+            # tree as it now is. A path still present (e.g. a symlink to nothing) is a real failure.
+            if os.path.lexists(abs_path):
+                on_error(rel_path, exc)
+            else:
+                logger.info("backup skipped %s: deleted after the scan", rel_path)
+            continue
         except (PermissionError, OSError, ValueError) as exc:
             on_error(rel_path, exc)
             continue

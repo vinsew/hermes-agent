@@ -2821,3 +2821,52 @@ def _count_rows(db_path: Path) -> tuple[int, int]:
         )
     finally:
         conn.close()
+
+
+def test_a_file_deleted_after_the_scan_is_not_a_missing_file(tmp_path, monkeypatch):
+    """Cron output retention deletes files while the 05:00 backup runs. A file gone by the time it
+    is written matches the tree as it now is: the archive is complete and retention still runs.
+    A path that is still there but cannot be read stays a failure (see the unreadable-file test)."""
+    hermes_home = tmp_path / ".hermes"
+    hermes_home.mkdir()
+    _make_hermes_tree(hermes_home)
+    doomed = hermes_home / "cron" / "output" / "job" / "2026-10-23_02-31-19.md"
+    doomed.parent.mkdir(parents=True)
+    doomed.write_text("one-off run output\n")
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    from hermes_cli import backup
+    real_write = backup._write_zip_file
+
+    def write_after_retention(zf, path, arcname):
+        if path == doomed:
+            path.unlink()  # retention ran between the scan and this write
+        real_write(zf, path, arcname)
+
+    monkeypatch.setattr(backup, "_write_zip_file", write_after_retention)
+    out_dir = tmp_path / "b"
+    out_dir.mkdir()
+    old = out_dir / f"{backup._RUN_BACKUP_PREFIX}20261022-050045.zip"
+    old.write_bytes(b"PK")
+    out_zip = out_dir / f"{backup._RUN_BACKUP_PREFIX}20261023-050045.zip"
+
+    assert backup.run_backup(Namespace(output=str(out_zip), keep=1)) is True
+    with zipfile.ZipFile(out_zip) as zf:
+        assert "cron/output/job/2026-10-23_02-31-19.md" not in zf.namelist()
+        assert zf.testzip() is None
+    assert not old.exists(), "a complete archive keeps retention working"
+
+
+def test_a_path_that_still_exists_but_cannot_be_opened_is_still_an_error(tmp_path):
+    """Only a path that is gone counts as deleted: a symlink to nothing raises the same
+    FileNotFoundError while the path itself is still there, and stays a reported failure."""
+    from hermes_cli import backup
+    link = tmp_path / "broken.md"
+    link.symlink_to(tmp_path / "nowhere.md")
+    errors = []
+    with zipfile.ZipFile(tmp_path / "x.zip", "w") as zf:
+        backup._write_zip_entries(
+            zf, [(link, Path("broken.md"))], tmp_path / "x.zip",
+            on_db_failure=lambda rel: errors.append(rel), on_error=lambda rel, exc: errors.append(rel),
+            on_progress=lambda i: None, track_bytes=True)
+    assert errors == [Path("broken.md")]
