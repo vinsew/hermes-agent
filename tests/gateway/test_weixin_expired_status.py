@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from gateway.config import PlatformConfig
-from gateway.platforms import weixin
+from plugins.platforms.weixin import adapter as weixin
 from gateway.status import flush_runtime_status
 
 
