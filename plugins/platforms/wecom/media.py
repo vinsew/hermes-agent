@@ -318,8 +318,17 @@ class WeComMediaMixin:
             upload_result = await self._upload_media_bytes(prepared["data"], prepared["final_type"], prepared["file_name"])
             logger.info("[%s] upload_media_bytes OK: media_id=%s type=%s", self.name, upload_result.get("media_id"), prepared["final_type"])
             if reply_req_id:  # passive reply when a req_id is usable, else proactive APP_CMD_SEND
-                media_response = await self._send_reply_request(reply_req_id, _media_body(prepared["final_type"], upload_result["media_id"]))
-                self._raise_for_wecom_error(media_response, "send reply media message")
+                try:
+                    media_response = await self._send_reply_request(reply_req_id, _media_body(prepared["final_type"], upload_result["media_id"]))
+                    self._raise_for_wecom_error(media_response, "send reply media message")
+                except RuntimeError as passive_err:
+                    # Cached req_id may be stale (846604) — reuse the uploaded media proactively, like send().
+                    # Only on an explicit reject: a timeout may have delivered, and groups can't receive proactive.
+                    if chat_id in self._group_chat_ids:
+                        raise
+                    logger.warning("[%s] Passive reply media failed (%s), falling back to proactive send", self.name, passive_err)
+                    reply_req_id = None
+                    media_response = await self._send_media_message(chat_id, prepared["final_type"], upload_result["media_id"])
             else:
                 media_response = await self._send_media_message(chat_id, prepared["final_type"], upload_result["media_id"])
             logger.info("[%s] %s OK: %s", self.name, "send_reply_media" if reply_req_id else "send_media_message", media_response)
