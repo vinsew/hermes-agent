@@ -212,6 +212,70 @@ class TestWeComReplyMode:
         assert args[0] == "req-1"
         assert args[1] == {"msgtype": "image", "image": {"media_id": "media-1"}}
 
+    @pytest.mark.asyncio
+    async def test_send_document_falls_back_to_proactive_when_reply_req_id_expired(self):
+        """A stale cached req_id (846604) must not lose the attachment: resend the
+        already-uploaded media proactively, like text send does."""
+        from plugins.platforms.wecom.adapter import WeComAdapter
+
+        adapter = WeComAdapter(PlatformConfig(enabled=True))
+        adapter._last_chat_req_ids["YiYang"] = "req-stale"
+        adapter._prepare_outbound_media = AsyncMock(
+            return_value={
+                "data": b"<html></html>",
+                "content_type": "text/html",
+                "file_name": "report.html",
+                "detected_type": "file",
+                "final_type": "file",
+                "rejected": False,
+                "reject_reason": None,
+                "downgraded": False,
+                "downgrade_note": None,
+            }
+        )
+        adapter._upload_media_bytes = AsyncMock(return_value={"media_id": "media-1", "type": "file"})
+        adapter._send_reply_request = AsyncMock(
+            return_value={"headers": {"req_id": "req-stale"}, "errcode": 846604, "errmsg": "websocket request expired"}
+        )
+        adapter._send_media_message = AsyncMock(
+            return_value={"headers": {"req_id": "req-new"}, "errcode": 0}
+        )
+
+        result = await adapter.send_document("YiYang", "/tmp/report.html")
+
+        assert result.success is True
+        adapter._upload_media_bytes.assert_awaited_once()
+        adapter._send_media_message.assert_awaited_once_with("YiYang", "file", "media-1")
+
+    @pytest.mark.asyncio
+    async def test_send_document_passive_timeout_does_not_resend_proactively(self):
+        """A timed-out passive reply may still have been delivered: report failure, don't double-send."""
+        from plugins.platforms.wecom.adapter import WeComAdapter
+
+        adapter = WeComAdapter(PlatformConfig(enabled=True))
+        adapter._last_chat_req_ids["YiYang"] = "req-1"
+        adapter._prepare_outbound_media = AsyncMock(
+            return_value={
+                "data": b"<html></html>",
+                "content_type": "text/html",
+                "file_name": "report.html",
+                "detected_type": "file",
+                "final_type": "file",
+                "rejected": False,
+                "reject_reason": None,
+                "downgraded": False,
+                "downgrade_note": None,
+            }
+        )
+        adapter._upload_media_bytes = AsyncMock(return_value={"media_id": "media-1", "type": "file"})
+        adapter._send_reply_request = AsyncMock(side_effect=TimeoutError())
+        adapter._send_media_message = AsyncMock()
+
+        result = await adapter.send_document("YiYang", "/tmp/report.html")
+
+        assert result.success is False
+        adapter._send_media_message.assert_not_awaited()
+
 
 class TestExtractText:
 
